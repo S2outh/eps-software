@@ -13,6 +13,8 @@ use embassy_stm32::{
 // use embedded_io_async::Write;
 // use heapless::Vec;
 
+use crate::tmp100_drv::{Addr0State, Resolution, Tmp100};
+
 use {defmt_rtt as _, panic_probe as _};
 
 // use static_cell::StaticCell;
@@ -25,14 +27,6 @@ use {defmt_rtt as _, panic_probe as _};
 // 
 // const RX_BUF_SIZE: usize = 500;
 // const TX_BUF_SIZE: usize = 30;
-//
-const TMP_ADDR_GND: u8 = 0b1001000;
-const TMP_ADDR_FLT: u8 = 0b1001001;
-const TMP_ADDR_HIG: u8 = 0b1001010;
-
-const POW11: i32 = 2048;
-const TMP_RANGE_TENTH_DEG: i32 = 1280;
-
 
 // static RX_BUF: StaticCell<embassy_stm32::can::RxBuf<RX_BUF_SIZE>> = StaticCell::new();
 // static TX_BUF: StaticCell<embassy_stm32::can::TxBuf<TX_BUF_SIZE>> = StaticCell::new();
@@ -77,9 +71,8 @@ async fn main(_spawner: Spawner) {
     // let mut bat_1_adc_ch = p.PA4;//.degrade_adc();
     // let bat_1_stat = Input::new(p.PC14, embassy_stm32::gpio::Pull::None);
     
-    let mut temp_sensor_i2c = I2c::new(p.I2C2, p.PA7, p.PA6, Irqs, p.DMA1_CH1, p.DMA1_CH2, Hertz::khz(400), i2c::Config::default());
-    temp_sensor_i2c.write(TMP_ADDR_FLT, &[0b01, 0b01100000]).await.unwrap(); // settings reg
-    temp_sensor_i2c.write(TMP_ADDR_FLT, &[0b00]).await.unwrap(); // tmp reg
+    let temp_sensor_i2c = I2c::new(p.I2C2, p.PA7, p.PA6, Irqs, p.DMA1_CH1, p.DMA1_CH2, Hertz::khz(400), i2c::Config::default());
+    let mut bat_1_tmp = Tmp100::new(temp_sensor_i2c, Resolution::Res9Bit, Addr0State::Floating).await.unwrap();
 
     // let mut led1 = Output::new(p.PB7, Level::High, Speed::Medium);
     // let mut led2 = Output::new(p.PB8, Level::Low, Speed::Medium);
@@ -105,10 +98,7 @@ async fn main(_spawner: Spawner) {
     // let _can_standby = Output::new(p.PA10, Level::Low, Speed::Low);
 
     loop {
-        let mut buffer = [0u8; 2];
-        temp_sensor_i2c.read(TMP_ADDR_FLT, &mut buffer).await.unwrap();
-        let tmp_raw = (buffer[0] as i32) << 4 | (buffer[1] as i32) >> 4;
-        let tmp_tenth_deg = (tmp_raw * TMP_RANGE_TENTH_DEG) / POW11;
+        let tmp_tenth_deg = bat_1_tmp.read_temp().await.unwrap();
         info!("tmp: {}", tmp_tenth_deg);
     //     led1.set_level((counter & 1 == 1).into());
     //     led2.set_level(((counter >> 1) & 1 == 1).into());
