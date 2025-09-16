@@ -7,16 +7,16 @@ mod battery;
 mod adc;
 
 use battery::{Battery, tmp100_drv::*, d_flip_flop::DFlipFlop};
-use embassy_sync::mutex::Mutex;
+use embassy_futures::join::{join3, join4};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, watch::Watch};
 use embassy_time::Timer;
 
-use rodos_can_interface::{RodosCanInterface, receiver::RodosCanReceiver, sender::RodosCanSender};
+use rodos_can_interface::RodosCanInterface;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_stm32::{
-    adc::{Adc, AdcChannel, SampleTime}, bind_interrupts, can::{self, CanConfigurator, RxBuf, TxBuf}, gpio::{Input, Level, Output, Speed}, i2c::{self, I2c}, pac, peripherals::{self, FDCAN1, IWDG}, rcc::{self, mux::Fdcansel}, time::Hertz, wdg::IndependentWatchdog, Config
+    adc::{Adc, AdcChannel}, bind_interrupts, can::{self, CanConfigurator, RxBuf, TxBuf}, gpio::{Input, Level, Output, Speed}, i2c::{self, I2c}, pac, peripherals::{self, FDCAN1, IWDG}, rcc::{self, mux::Fdcansel}, time::Hertz, wdg::IndependentWatchdog, Config
 };
-// use embedded_io_async::Write;
 
 
 use adc::EPSAdc;
@@ -82,24 +82,45 @@ async fn main(_spawner: Spawner) {
     // let mut watchdog = IndependentWatchdog::new(p.IWDG, 300_000);
     // watchdog.unleash();
 
+    // ADC setup
     let adc_periph = Adc::new(p.ADC1);
+    let internal_temperature_watch = Watch::<NoopRawMutex, i32, 1>::new();
     let bat_1_channel = p.PA4.degrade_adc();
-    let mut adc = EPSAdc::new(adc_periph, p.DMA1_CH1, bat_1_channel);
-    loop {
-        adc.measure().await;
-        Timer::after_millis(200).await;
-    }
+    let bat_1_watch = Watch::<NoopRawMutex, i32, 1>::new();
+    let bat_2_channel = p.PA3.degrade_adc();
+    let bat_2_watch = Watch::<NoopRawMutex, i32, 1>::new();
+    let aux_pwr_channel = p.PA2.degrade_adc();
+    let aux_pwr_watch = Watch::<NoopRawMutex, i32, 1>::new();
+    let mut adc = EPSAdc::new(adc_periph, p.DMA1_CH1,
+        bat_1_channel,
+        bat_2_channel,
+        aux_pwr_channel,
+        internal_temperature_watch.sender().as_dyn(),
+        bat_1_watch.sender().as_dyn(),
+        bat_2_watch.sender().as_dyn(),
+        aux_pwr_watch.sender().as_dyn(),
+    );
+    let adc_future = adc.run(100);
     
-    let temp_sensor_i2c = Mutex::new(I2c::new(p.I2C2, p.PA7, p.PA6, Irqs, p.DMA1_CH1, p.DMA1_CH2, Hertz::khz(400), i2c::Config::default()));
-    let bat_1_tmp = Tmp100::new(&temp_sensor_i2c, Resolution::BITS9, Addr0State::Floating).await.unwrap();
-    let bat_1_enable = DFlipFlop::new(p.PB3, p.PB6);
+    // i2c for temperature sensors
+    let temp_sensor_i2c = Mutex::new(I2c::new(p.I2C2, p.PA7, p.PA6, Irqs, p.DMA1_CH2, p.DMA1_CH3, Hertz::khz(400), i2c::Config::default()));
+
+    // flip flop clk line
+    let flip_flop_clk_pin = Mutex::new(Output::new(p.PB6, Level::Low, Speed::Medium));
+
+    // first battery task
+    let bat_1_tmp = Tmp100::new(&temp_sensor_i2c, Resolution::BITS12, Addr0State::Floating).await.unwrap();
+    let bat_1_enable = DFlipFlop::new(p.PB3, flip_flop_clk_pin);
     let bat_1_stat = Input::new(p.PC14, embassy_stm32::gpio::Pull::None);
-    let bat_1 = Battery::new(bat_1_tmp, bat_1_enable, bat_1_stat).await;
+    let mut bat_1 = Battery::new(bat_1_tmp, bat_1_watch.receiver().unwrap().as_dyn(), bat_1_enable, bat_1_stat).await;
+    let bat_1_future = bat_1.run(100);
+
+    // aux pwr task
+    let aux_pwr_enable = DFlipFlop::new(p.PB5, flip_flop_clk_pin);
+    let aux_pwr_stat = Input::new(p.PC15, embassy_stm32::gpio::Pull::None);
 
     let _led1 = Output::new(p.PB7, Level::Low, Speed::Low);
     let _led2 = Output::new(p.PB8, Level::High, Speed::Low);
-
-    // let mut counter = 4;
 
     // -- CAN configuration
     let mut rodos_can_configurator = RodosCanInterface::new(
@@ -118,9 +139,9 @@ async fn main(_spawner: Spawner) {
 
     // set can standby pin to low
     let _can_standby = Output::new(p.PA10, Level::Low, Speed::Low);
-    let _can_standby2 = Output::new(p.PB2, Level::High, Speed::Low);
+    //let _can_2_standby = Output::new(p.PB2, Level::High, Speed::Low);
 
-    loop {
+    join4(adc_future, bat_1_future, aux_pwr_future, async { loop {
         // led2.toggle();
         // info!("current state: {}", bat_1_stat.get_level());
         // info!("current voltage: {}", adc.blocking_read(&mut bat_1_adc_ch));
@@ -152,5 +173,5 @@ async fn main(_spawner: Spawner) {
             }
             Err(e) => error!("error in frame! {}", e),
         };
-    }
+    }});
 }
