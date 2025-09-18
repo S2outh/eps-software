@@ -1,15 +1,15 @@
-use embassy_stm32::gpio::{Level, Output, Pin, Speed};
+use embassy_stm32::{gpio::{Level, Output, Pin, Speed}, Peri};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use embassy_time::Timer;
 
 
-pub struct DFlipFlop<'a> {
-    d_pin: Output<'a>,
-    clk_pin: Mutex<NoopRawMutex, Output<'a>>,
+pub struct DFlipFlop<'a, 'd> {
+    d_pin: Output<'d>,
+    clk_pin: &'a Mutex<NoopRawMutex, Output<'d>>,
 }
 
-impl<'a> DFlipFlop<'a> {
-    pub fn new(d_periph: impl Pin, clk_pin: Mutex<NoopRawMutex, Output<'a>>) -> Self {
+impl<'a, 'd> DFlipFlop<'a, 'd> {
+    pub fn new(d_periph: Peri<'d, impl Pin>, clk_pin: &'a Mutex<NoopRawMutex, Output<'d>>) -> Self {
         let d_pin = Output::new(d_periph, Level::Low, Speed::Medium);
         Self { d_pin, clk_pin }
     }

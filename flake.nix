@@ -25,6 +25,7 @@
           buildInputs = with pkgs; [
             clang
             llvmPackages.bintools
+            cargo-edit
             rustup
 						probe-rs-tools
           ];

@@ -80,7 +80,7 @@ impl<'a, 'd> Tmp100<'a, 'd> {
         let tmp_raw = (buffer[0] as i32) << bitshift | (buffer[1] as i32) >> (8 - bitshift);
         Ok(tmp_raw)
     }
-    pub async fn read_temp(&mut self) -> Result<i32, Error> {
-        Ok((self.read_temp_raw().await? * TEMP_RANGE_TENTH_DEG) / self.raw_temp_range())
+    pub async fn read_temp(&mut self) -> Result<i16, Error> {
+        Ok(((self.read_temp_raw().await? * TEMP_RANGE_TENTH_DEG) / self.raw_temp_range()) as i16)
     }
 }

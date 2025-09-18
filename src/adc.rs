@@ -1,6 +1,6 @@
 mod calib;
 
-use embassy_stm32::{adc::{Adc, AdcChannel, AnyAdcChannel, RxDma, SampleTime}, peripherals::ADC1};
+use embassy_stm32::{adc::{Adc, AdcChannel, AnyAdcChannel, RxDma, SampleTime}, peripherals::ADC1, Peri};
 use calib::FactoryCalibratedValues;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, watch::{DynSender, Sender}};
 use embassy_time::Timer;
@@ -26,7 +26,7 @@ const TEMP_CH_POS: usize = 3;
 
 pub struct EPSAdc<'a, 'd, D: RxDma<ADC1>> {
     adc: Adc<'d, ADC1>,
-    dma_channel: D,
+    dma_channel: Peri<'d, D>,
     calib: FactoryCalibratedValues,
     // adc channels
     temp_channel: AnyAdcChannel<ADC1>,
@@ -34,21 +34,22 @@ pub struct EPSAdc<'a, 'd, D: RxDma<ADC1>> {
     bat_2_channel: AnyAdcChannel<ADC1>,
     aux_pwr_channel: AnyAdcChannel<ADC1>,
     // watchers
-    temp_sender: DynSender<'a, i32>,
-    bat_1_sender: DynSender<'a, i32>,
-    bat_2_sender: DynSender<'a, i32>,
-    aux_pwr_sender: DynSender<'a, i32>,
+    temp_sender: DynSender<'a, i16>,
+    bat_1_sender: DynSender<'a, i16>,
+    bat_2_sender: DynSender<'a, i16>,
+    aux_pwr_sender: DynSender<'a, i16>,
 }
 
 impl<'a, 'd, D: RxDma<ADC1>> EPSAdc<'a, 'd, D> {
-    pub fn new(mut adc: Adc<'d, ADC1>, dma_channel: D,
+    pub fn new(mut adc: Adc<'d, ADC1>,
+            dma_channel: Peri<'d, D>,
             bat_1_channel: AnyAdcChannel<ADC1>,
             bat_2_channel: AnyAdcChannel<ADC1>,
             aux_pwr_channel: AnyAdcChannel<ADC1>,
-            temp_sender: DynSender<'a, i32>,
-            bat_1_sender: DynSender<'a, i32>,
-            bat_2_sender: DynSender<'a, i32>,
-            aux_pwr_sender: DynSender<'a, i32>,
+            temp_sender: DynSender<'a, i16>,
+            bat_1_sender: DynSender<'a, i16>,
+            bat_2_sender: DynSender<'a, i16>,
+            aux_pwr_sender: DynSender<'a, i16>,
         ) -> Self {
         let calib = FactoryCalibratedValues::new();
 
@@ -60,7 +61,9 @@ impl<'a, 'd, D: RxDma<ADC1>> EPSAdc<'a, 'd, D> {
 
         let temp_channel = adc.enable_temperature().degrade_adc();
 
-        Self { adc, dma_channel, calib,
+        Self { adc,
+            dma_channel,
+            calib,
             temp_channel,
             bat_1_channel,
             bat_2_channel,
@@ -71,20 +74,22 @@ impl<'a, 'd, D: RxDma<ADC1>> EPSAdc<'a, 'd, D> {
             aux_pwr_sender
         }
     }
-    fn calculate_temperature_tenth_deg(&self, measurement: u16) -> i32 {
+    fn calculate_temperature_tenth_deg(&self, measurement: u16) -> i16 {
         let temp_measurement_x10 = 10 * measurement as i32;
         let temp_calibrated_measurement = temp_measurement_x10 * VREF_10MV / VREF_CALIB_10MV;
-        TS_REL_VAL_TENTH_DEG * (temp_calibrated_measurement - self.calib.ts_cal_1_x10)
-            / self.calib.ts_cal_rel_x10 + TS_1_VAL_TENTH_DEG
+        let temp_tenth_deg = TS_REL_VAL_TENTH_DEG * (temp_calibrated_measurement - self.calib.ts_cal_1_x10)
+            / self.calib.ts_cal_rel_x10 + TS_1_VAL_TENTH_DEG;
+        temp_tenth_deg as i16
     }
-    fn calculate_voltage_10mv(&self, measurement: u16) -> i32 {
+    fn calculate_voltage_10mv(&self, measurement: u16) -> i16 {
         let vbat_1_measurement_x100 = 100 * measurement as i32;
-        vbat_1_measurement_x100 * V_DIVIDER_MULT * VREF_10MV / RAW_VALUE_RANGE_X100
+        let voltage_mv = vbat_1_measurement_x100 * V_DIVIDER_MULT * VREF_10MV / RAW_VALUE_RANGE_X100;
+        voltage_mv as i16
     }
-    pub async fn measure(&mut self) -> (i32, i32, i32, i32) {
+    pub async fn measure(&mut self) -> (i16, i16, i16, i16) {
         let mut measurements = [0u16; 4];
         self.adc.read(
-            &mut self.dma_channel,
+            self.dma_channel.reborrow(),
             [
                 (&mut self.aux_pwr_channel, SampleTime::CYCLES160_5),
                 (&mut self.bat_2_channel, SampleTime::CYCLES160_5),
