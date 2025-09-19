@@ -23,6 +23,8 @@ use adc::EPSAdc;
 
 use control_loop::ControlLoop;
 
+use crate::pwr_src::sink_ctrl::SinkCtrl;
+
 use {defmt_rtt as _, panic_probe as _};
 
 const ADC_LOOP_LEN_MS: u64 = 50;
@@ -94,23 +96,24 @@ async fn main(_spawner: Spawner) {
     let adc_future = adc.run(ADC_LOOP_LEN_MS);
     
     // i2c for temperature sensors
-    let i2c_config = i2c::Config::default();
+    let mut i2c_config = i2c::Config::default();
     i2c_config.frequency = khz(400);
     let temp_sensor_i2c = Mutex::new(I2c::new(p.I2C2, p.PA7, p.PA6, Irqs, p.DMA1_CH2, p.DMA1_CH3, i2c_config));
 
-    // flip flop clk line
-    let flip_flop_clk_pin = Mutex::new(Output::new(p.PB6, Level::Low, Speed::Medium));
+    // flip flop
+    let source_flip_flop = DFlipFlop::new(p.PB3, p.PB4, p.PB5, p.PB6);
+
+    // sink ctrl
+    let sink_ctrl = SinkCtrl::new(p.PA5, p.PA9, p.PA15);
 
     // first battery
     let bat_1_tmp = Tmp100::new(&temp_sensor_i2c, Resolution::BITS12, Addr0State::Floating).await.unwrap();
-    let bat_1_enable = DFlipFlop::new(p.PB3, &flip_flop_clk_pin);
     let bat_1_stat = Input::new(p.PC14, embassy_stm32::gpio::Pull::None);
-    let bat_1 = Battery::new(bat_1_tmp, bat_1_watch.receiver().unwrap().as_dyn(), bat_1_enable, bat_1_stat).await;
+    let bat_1 = Battery::new(bat_1_tmp, bat_1_watch.receiver().unwrap().as_dyn(), bat_1_stat).await;
 
     // aux power
-    let aux_pwr_enable = DFlipFlop::new(p.PB5, &flip_flop_clk_pin);
     let aux_pwr_stat = Input::new(p.PC15, embassy_stm32::gpio::Pull::None);
-    let aux_pwr = AuxPwr::new(aux_pwr_watch.receiver().unwrap().as_dyn(), aux_pwr_enable, aux_pwr_stat).await;
+    let aux_pwr = AuxPwr::new(aux_pwr_watch.receiver().unwrap().as_dyn(), aux_pwr_stat).await;
 
     // debug leds not used at the moment (might disrupt can)
     let _led1 = Output::new(p.PB7, Level::Low, Speed::Low);
@@ -122,7 +125,14 @@ async fn main(_spawner: Spawner) {
 
     // Main control loop setup
     let can_configurator = CanConfigurator::new(p.FDCAN1, p.PA11, p.PA12, Irqs);
-    let mut control_loop = ControlLoop::spawn(bat_1, aux_pwr, internal_temperature_watch.receiver().unwrap().as_dyn(), can_configurator);
+    let mut control_loop = ControlLoop::spawn(
+        source_flip_flop,
+        sink_ctrl,
+        bat_1,
+        aux_pwr,
+        internal_temperature_watch.receiver().unwrap().as_dyn(),
+        can_configurator
+    );
     let control_loop_future = control_loop.run();
 
     join3(petter(watchdog), adc_future, control_loop_future).await;

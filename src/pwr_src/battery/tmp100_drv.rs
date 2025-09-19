@@ -1,4 +1,4 @@
-use embassy_stm32::{i2c::{I2c, Error}, mode::Async};
+use embassy_stm32::{i2c::{Error, I2c, Master}, mode::Async};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 
 const TEMP_RANGE_TENTH_DEG: i32 = 128_0;
@@ -57,13 +57,17 @@ impl Addr0State {
 }
 
 pub struct Tmp100<'a, 'd> {
-    interface: &'a Mutex<NoopRawMutex, I2c<'d, Async>>,
+    interface: &'a Mutex<NoopRawMutex, I2c<'d, Async, Master>>,
     resolution: Resolution,
     addr_state: Addr0State
 }
 
 impl<'a, 'd> Tmp100<'a, 'd> {
-    pub async fn new(interface: &'a Mutex<NoopRawMutex, I2c<'d, Async>>, resolution: Resolution, addr_state: Addr0State) -> Result<Self, Error> {
+    pub async fn new(
+        interface: &'a Mutex<NoopRawMutex, I2c<'d, Async, Master>>,
+        resolution: Resolution,
+        addr_state: Addr0State
+    ) -> Result<Self, Error> {
         let mut config_reg = 0;
         resolution.set_reg_bits(&mut config_reg);
         interface.lock().await.write(addr_state.get_addr(), &[CONFIG_POINTER_REG, config_reg]).await?;

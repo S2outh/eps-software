@@ -2,7 +2,7 @@ mod calib;
 
 use embassy_stm32::{adc::{Adc, AdcChannel, AnyAdcChannel, RxDma, SampleTime}, peripherals::ADC1, Peri};
 use calib::FactoryCalibratedValues;
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, watch::{DynSender, Sender}};
+use embassy_sync::watch::DynSender;
 use embassy_time::Timer;
 
 // datasheet reference conditions
