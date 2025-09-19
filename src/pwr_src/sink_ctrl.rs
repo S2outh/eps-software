@@ -19,9 +19,9 @@ impl<'d> SinkCtrl<'d> {
         lst_enable: Peri<'d, impl Pin>,
         rhd_enable: Peri<'d, impl Pin>,
     ) -> Self {
-        let mb_enable = Output::new(mb_enable, Level::Low, Speed::High);
-        let lst_enable = Output::new(lst_enable, Level::Low, Speed::High);
-        let rhd_enable = Output::new(rhd_enable, Level::Low, Speed::High);
+        let mb_enable = Output::new(mb_enable, Level::High, Speed::High);
+        let lst_enable = Output::new(lst_enable, Level::High, Speed::High);
+        let rhd_enable = Output::new(rhd_enable, Level::High, Speed::High);
         Self { mb_enable, lst_enable, rhd_enable }
     }
     pub fn enable(&mut self, sink: Sink) {

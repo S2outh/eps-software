@@ -49,7 +49,7 @@ async fn petter(mut watchdog: IndependentWatchdog<'_, IWDG>) {
 fn get_rcc_config() -> rcc::Config {
     let mut rcc_config = rcc::Config::default();
     rcc_config.hsi = Some(rcc::Hsi { sys_div: rcc::HsiSysDiv::DIV1 });
-    rcc_config.sys = rcc::Sysclk::HSI;
+    rcc_config.sys = rcc::Sysclk::PLL1_R;
     rcc_config.pll = Some(rcc::Pll {
         source: rcc::PllSource::HSI,
         prediv: rcc::PllPreDiv::DIV1,

@@ -1,6 +1,6 @@
 mod telecommands;
 
-use defmt::error;
+use defmt::{error, info};
 use embassy_stm32::can::{CanConfigurator, RxBuf, TxBuf};
 use embassy_sync::watch::DynReceiver;
 use rodos_can_interface::{ActivePeriph, RodosCanInterface};
@@ -71,6 +71,7 @@ impl<'a, 'd> ControlLoop<'a, 'd> {
     }
 
     pub async fn handle_cmd(&mut self, data: &[u8]) {
+        info!("received tc");
         match Telecommand::parse(data) {
             Ok(telecommand) => match telecommand {
                 Telecommand::SetSource(state) => self.source_flip_flop.set(state).await,
@@ -86,7 +87,7 @@ impl<'a, 'd> ControlLoop<'a, 'd> {
             match self.can_tranciever.receive().await {
                 Ok(frame) => {
                     let mut data = [0; RODOS_MAX_RAW_MSG_LEN];
-                    data.copy_from_slice(frame.data());
+                    data[..frame.data().len()].copy_from_slice(frame.data());
                     match frame.topic() {
                         RODOS_CMD_TOPIC_ID => self.handle_cmd(&data).await,
                         RODOS_TELEM_REQ_TOPIC_ID => {},
