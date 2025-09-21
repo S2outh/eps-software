@@ -101,7 +101,8 @@ async fn main(_spawner: Spawner) {
     let temp_sensor_i2c = Mutex::new(I2c::new(p.I2C2, p.PA7, p.PA6, Irqs, p.DMA1_CH2, p.DMA1_CH3, i2c_config));
 
     // flip flop
-    let source_flip_flop = DFlipFlop::new(p.PB3, p.PB4, p.PB5, p.PB6);
+    let mut source_flip_flop = DFlipFlop::new(p.PB3, p.PB4, p.PB5, p.PB6);
+    source_flip_flop.set(pwr_src::d_flip_flop::FlipFlopState::Off).await;
 
     // sink ctrl
     let sink_ctrl = SinkCtrl::new(p.PA5, p.PA9, p.PA15);

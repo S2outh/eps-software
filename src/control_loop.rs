@@ -3,11 +3,12 @@ mod telecommands;
 use defmt::{error, info};
 use embassy_stm32::can::{CanConfigurator, RxBuf, TxBuf};
 use embassy_sync::watch::DynReceiver;
+use embassy_time::Timer;
 use rodos_can_interface::{ActivePeriph, RodosCanInterface};
 use static_cell::StaticCell;
 
 use crate::control_loop::telecommands::Telecommand;
-use crate::pwr_src::d_flip_flop::DFlipFlop;
+use crate::pwr_src::d_flip_flop::{DFlipFlop, FlipFlopState};
 use crate::pwr_src::sink_ctrl::{Sink, SinkCtrl};
 
 use super::pwr_src::battery::Battery;
@@ -34,7 +35,13 @@ const TX_BUF_SIZE: usize = 30;
 static RX_BUF: StaticCell<embassy_stm32::can::RxBuf<RX_BUF_SIZE>> = StaticCell::new();
 static TX_BUF: StaticCell<embassy_stm32::can::TxBuf<TX_BUF_SIZE>> = StaticCell::new();
 
+enum SystemState {
+    Standby,
+    Online,
+}
+
 pub struct ControlLoop<'a, 'd> {
+    state: SystemState,
     source_flip_flop: DFlipFlop<'d>,
     sink_ctrl: SinkCtrl<'d>,
     bat_1: Battery<'a, 'd>,
@@ -67,7 +74,9 @@ impl<'a, 'd> ControlLoop<'a, 'd> {
             RX_BUF.init(RxBuf::<RX_BUF_SIZE>::new()),
         );
 
-        Self { source_flip_flop, sink_ctrl, bat_1, aux_pwr, internal_temperature, can_tranciever }
+        let state = SystemState::Standby;
+
+        Self { state, source_flip_flop, sink_ctrl, bat_1, aux_pwr, internal_temperature, can_tranciever }
     }
 
     pub async fn handle_cmd(&mut self, data: &[u8]) {
@@ -111,20 +120,34 @@ impl<'a, 'd> ControlLoop<'a, 'd> {
             &[bitmap]).await
             .unwrap_or_else(|e| error!("could not send enable bm: {}", e));
     }
+    
+    async fn run_online(&mut self) {
+        match self.can_tranciever.receive().await {
+            Ok(frame) => {
+                let mut data = [0; RODOS_MAX_RAW_MSG_LEN];
+                data[..frame.data().len()].copy_from_slice(frame.data());
+                match frame.topic() {
+                    RODOS_CMD_TOPIC_ID => self.handle_cmd(&data).await,
+                    RODOS_TELEM_REQ_TOPIC_ID => self.send_tm().await,
+                    _ => error!("impossible topic: {}", frame.topic()),
+                }
+                                }
+            Err(e) => error!("error in frame! {}", e),
+        };
+    }
+
+    async fn run_standby(&mut self) {
+        if !self.aux_pwr.is_enabled() {
+            self.source_flip_flop.set(FlipFlopState::Bat1).await;
+        }
+        Timer::after_millis(50).await;
+    }
 
     pub async fn run(&mut self) {
         loop {
-            match self.can_tranciever.receive().await {
-                Ok(frame) => {
-                    let mut data = [0; RODOS_MAX_RAW_MSG_LEN];
-                    data[..frame.data().len()].copy_from_slice(frame.data());
-                    match frame.topic() {
-                        RODOS_CMD_TOPIC_ID => self.handle_cmd(&data).await,
-                        RODOS_TELEM_REQ_TOPIC_ID => self.send_tm().await,
-                        _ => error!("impossible topic: {}", frame.topic()),
-                    }
-                                    }
-                Err(e) => error!("error in frame! {}", e),
+            match self.state {
+                SystemState::Online => self.run_online().await,
+                SystemState::Standby => self.run_standby().await,
             };
         }
     }
