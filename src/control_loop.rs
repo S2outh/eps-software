@@ -16,15 +16,16 @@ use super::pwr_src::aux_pwr::AuxPwr;
 
 const RODOS_DEVICE_ID: u8 = 0x02;
 
-const RODOS_CMD_TOPIC_ID: u16 = 8000;
-
-const RODOS_TELEM_REQ_TOPIC_ID: u16 = 1000;
-
-const RODOS_TELEM_ENABLE_BM_TOPIC_ID: u16 = 1410;
-const RODOS_TELEM_BAT_1_TMP_TOPIC_ID: u16 = 1411;
-const RODOS_TELEM_INERNAL_TMP_TOPIC_ID: u16 = 1412;
-const RODOS_TELEM_BAT_1_VOLTAGE_TOPIC_ID: u16 = 1413;
-const RODOS_TELEM_AUX_PWR_VOLTAGE_TOPIC_ID: u16 = 1414;
+#[repr(u16)]
+enum TopicId {
+    Cmd = 8000,
+    TelemReq = 1000,
+    TelemEnableBM = 1410,
+    TelemBat1Tmp = 1411,
+    TelemInternalTmp = 1412,
+    TelemBat1Voltage = 1413,
+    TelemAuxPwrVoltage = 1414,
+}
 
 const RODOS_MAX_RAW_MSG_LEN: usize = 32;
 const NUMBER_OF_SENDING_DEVICES: usize = 4;
@@ -66,8 +67,8 @@ impl<'a, 'd> ControlLoop<'a, 'd> {
 
         rodos_can_configurator
             .set_bitrate(1_000_000)
-            .add_receive_topic(RODOS_CMD_TOPIC_ID, None).unwrap()
-            .add_receive_topic(RODOS_TELEM_REQ_TOPIC_ID, None).unwrap();
+            .add_receive_topic(TopicId::Cmd as u16, None).unwrap()
+            .add_receive_topic(TopicId::TelemReq as u16, None).unwrap();
 
         let can_tranciever = rodos_can_configurator.activate(
             TX_BUF.init(TxBuf::<TX_BUF_SIZE>::new()),
@@ -93,19 +94,19 @@ impl<'a, 'd> ControlLoop<'a, 'd> {
         }
     }
     pub async fn send_tm(&mut self) {
-        self.can_tranciever.send(RODOS_TELEM_BAT_1_TMP_TOPIC_ID,
+        self.can_tranciever.send(TopicId::TelemBat1Tmp as u16,
             &self.bat_1.get_temperature().await.to_le_bytes()).await
             .unwrap_or_else(|e| error!("could not send bat 1 tmp: {}", e));
 
-        self.can_tranciever.send(RODOS_TELEM_INERNAL_TMP_TOPIC_ID,
+        self.can_tranciever.send(TopicId::TelemInternalTmp as u16,
             &self.internal_temperature.get().await.to_le_bytes()).await
             .unwrap_or_else(|e| error!("could not send internal tmp: {}", e));
 
-        self.can_tranciever.send(RODOS_TELEM_BAT_1_VOLTAGE_TOPIC_ID,
+        self.can_tranciever.send(TopicId::TelemBat1Voltage as u16,
             &self.bat_1.get_voltage().await.to_le_bytes()).await
             .unwrap_or_else(|e| error!("could not send bat 1 voltage: {}", e));
 
-        self.can_tranciever.send(RODOS_TELEM_AUX_PWR_VOLTAGE_TOPIC_ID,
+        self.can_tranciever.send(TopicId::TelemAuxPwrVoltage as u16,
             &self.aux_pwr.get_voltage().await.to_le_bytes()).await
             .unwrap_or_else(|e| error!("could not send aux pwr voltage: {}", e));
 
@@ -116,18 +117,24 @@ impl<'a, 'd> ControlLoop<'a, 'd> {
             (self.sink_ctrl.is_enabled(Sink::RocketLST) as u8) << 3 |
             (self.sink_ctrl.is_enabled(Sink::RocketHD) as u8) << 4;
 
-        self.can_tranciever.send(RODOS_TELEM_ENABLE_BM_TOPIC_ID,
+        self.can_tranciever.send(TopicId::TelemEnableBM as u16,
             &[bitmap]).await
             .unwrap_or_else(|e| error!("could not send enable bm: {}", e));
     }
-    
+
+
     async fn run_online(&mut self) {
+
+        const RODOS_CMD_TOPIC_ID: u16 = TopicId::Cmd as u16;
+        const RODOS_TELEM_REQ_TOPIC_ID: u16 = TopicId::TelemReq as u16;
+
         // if critical systems are not online, wait for 1 second then enable them
         if !self.sink_ctrl.is_critical_enabled() || (!self.bat_1.is_enabled() && !self.aux_pwr.is_enabled()) {
             Timer::after_secs(1).await;
             self.sink_ctrl.enable_critical();
             self.source_flip_flop.set(FlipFlopState::Bat1).await;
         }
+
         // control over can connection
         match self.can_tranciever.receive().await {
             Ok(frame) => {
