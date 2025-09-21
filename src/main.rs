@@ -9,7 +9,7 @@ mod adc;
 
 use pwr_src::{battery::{Battery, tmp100_drv::*}, aux_pwr::AuxPwr, d_flip_flop::DFlipFlop};
 use embassy_futures::join::join3;
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, watch::Watch};
+use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, mutex::Mutex, watch::Watch};
 use embassy_time::Timer;
 
 use defmt::*;
@@ -76,13 +76,13 @@ async fn main(_spawner: Spawner) {
 
     // ADC setup
     let adc_periph = Adc::new(p.ADC1);
-    let internal_temperature_watch = Watch::<NoopRawMutex, i16, 1>::new();
+    let internal_temperature_watch = Watch::<ThreadModeRawMutex, i16, 1>::new();
     let bat_1_channel = p.PA4.degrade_adc();
-    let bat_1_watch = Watch::<NoopRawMutex, i16, 1>::new();
+    let bat_1_watch = Watch::<ThreadModeRawMutex, i16, 1>::new();
     let bat_2_channel = p.PA3.degrade_adc();
-    let bat_2_watch = Watch::<NoopRawMutex, i16, 1>::new();
+    let bat_2_watch = Watch::<ThreadModeRawMutex, i16, 1>::new();
     let aux_pwr_channel = p.PA2.degrade_adc();
-    let aux_pwr_watch = Watch::<NoopRawMutex, i16, 1>::new();
+    let aux_pwr_watch = Watch::<ThreadModeRawMutex, i16, 1>::new();
     let mut adc = EPSAdc::new(adc_periph,
         p.DMA1_CH1,
         bat_1_channel,

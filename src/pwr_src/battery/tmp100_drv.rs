@@ -1,5 +1,5 @@
 use embassy_stm32::{i2c::{Error, I2c, Master}, mode::Async};
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
+use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, mutex::Mutex};
 
 const TEMP_RANGE_TENTH_DEG: i32 = 128_0;
 
@@ -57,14 +57,14 @@ impl Addr0State {
 }
 
 pub struct Tmp100<'a, 'd> {
-    interface: &'a Mutex<NoopRawMutex, I2c<'d, Async, Master>>,
+    interface: &'a Mutex<ThreadModeRawMutex, I2c<'d, Async, Master>>,
     resolution: Resolution,
     addr_state: Addr0State
 }
 
 impl<'a, 'd> Tmp100<'a, 'd> {
     pub async fn new(
-        interface: &'a Mutex<NoopRawMutex, I2c<'d, Async, Master>>,
+        interface: &'a Mutex<ThreadModeRawMutex, I2c<'d, Async, Master>>,
         resolution: Resolution,
         addr_state: Addr0State
     ) -> Result<Self, Error> {
