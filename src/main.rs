@@ -108,9 +108,10 @@ async fn main(_spawner: Spawner) {
     let sink_ctrl = SinkCtrl::new(p.PA9, p.PA5, p.PA0, p.PA15);
 
     // first battery
-    let bat_1_tmp = Tmp100::new(&temp_sensor_i2c, Resolution::BITS12, Addr0State::Floating).await.unwrap();
+    let bat_1_tmp = Tmp100::new(&temp_sensor_i2c, Resolution::BITS12, Addr0State::Floating).await
+        .inspect_err(|e| error!("could not establish connection to bat 1 temp sensor: {}", e));
     let bat_1_stat = Input::new(p.PC14, embassy_stm32::gpio::Pull::None);
-    let bat_1 = Battery::new(bat_1_tmp, bat_1_watch.receiver().unwrap().as_dyn(), bat_1_stat).await;
+    let bat_1 = Battery::new(bat_1_tmp.ok(), bat_1_watch.receiver().unwrap().as_dyn(), bat_1_stat).await;
 
     // aux power
     let aux_pwr_stat = Input::new(p.PC15, embassy_stm32::gpio::Pull::None);

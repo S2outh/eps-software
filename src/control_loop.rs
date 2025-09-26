@@ -28,6 +28,7 @@ enum TopicId {
 }
 
 const ACTIVATION_VOLTAGE_THRESHHOLD_10X_MV: i16 = 15_00;
+const ERROR_TMP: i16 = i16::MIN;
 
 const RODOS_MAX_RAW_MSG_LEN: usize = 32;
 const NUMBER_OF_SENDING_DEVICES: usize = 4;
@@ -114,7 +115,7 @@ impl<'a, 'd> ControlLoop<'a, 'd> {
     }
     pub async fn send_tm(&mut self) {
         self.can_tranciever.send(TopicId::TelemBat1Tmp as u16,
-            &self.bat_1.get_temperature().await.to_le_bytes()).await
+            &self.bat_1.get_temperature().await.unwrap_or(ERROR_TMP).to_le_bytes()).await
             .unwrap_or_else(|e| error!("could not send bat 1 tmp: {}", e));
 
         self.can_tranciever.send(TopicId::TelemInternalTmp as u16,
