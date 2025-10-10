@@ -19,8 +19,8 @@ const RODOS_DEVICE_ID: u8 = 0x02;
 
 #[repr(u16)]
 enum TopicId {
-    Cmd = 8000,
-    TelemReq = 1000,
+    Cmd = 1100,
+    TelemReq = 1102,
     TelemEnableBM = 1410,
     TelemBat1Tmp = 1411,
     TelemInternalTmp = 1412,
