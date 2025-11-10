@@ -8,7 +8,6 @@ use embassy_stm32::{
     peripherals::ADC1,
 };
 use embassy_sync::watch::DynSender;
-use embassy_time::Timer;
 use heapless::Vec;
 
 #[derive(Constructor)]
@@ -123,12 +122,9 @@ impl<'a, 'd, D: RxDma<ADC1>, const N: usize> AdcCtrl<'a, 'd, D, N> {
             .for_each(|(c, v)| c.sender.send(v));
     }
 
-    const ADC_LOOP_LEN_MS: u64 = 50;
-
     pub async fn run(&mut self) {
         let raw_values = self.measure().await;
         let converted_values = self.convert(raw_values);
         self.send(converted_values);
-        Timer::after_millis(Self::ADC_LOOP_LEN_MS).await;
     }
 }

@@ -52,14 +52,6 @@ bind_interrupts!(struct Irqs {
     TIM17_FDCAN_IT1 => can::IT1InterruptHandler<FDCAN1>;
 });
 
-/// Watchdog petting task
-#[embassy_executor::task]
-async fn petter(mut watchdog: IndependentWatchdog<'static, IWDG>) {
-    loop {
-        watchdog.pet();
-        Timer::after_millis(200).await;
-    }
-}
 
 /// config rcc for higher sysclock and fdcan periph clock to make sure
 /// all messages can be received without package drop
@@ -81,10 +73,22 @@ fn get_rcc_config() -> rcc::Config {
     rcc_config
 }
 
+/// Watchdog petting task
+#[embassy_executor::task]
+async fn petter(mut watchdog: IndependentWatchdog<'static, IWDG>) {
+    loop {
+        watchdog.pet();
+        Timer::after_millis(200).await;
+    }
+}
+
+// Adc reading task
 #[embassy_executor::task]
 pub async fn adc_thread(mut adc: AdcCtrl<'static, 'static, DMA1_CH1, 4>) {
+    const ADC_LOOP_LEN_MS: u64 = 50;
     loop {
         adc.run().await;
+        Timer::after_millis(ADC_LOOP_LEN_MS).await;
     }
 }
 // static concurrency sync management types
