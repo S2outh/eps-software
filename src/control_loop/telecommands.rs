@@ -5,10 +5,10 @@ use crate::pwr_src::{d_flip_flop::FlipFlopState, sink_ctrl::Sink};
 const POWER_CMD_SUBSYSTEM_ID: u8 = 0x01;
 
 #[derive(Format)]
-pub(super) struct ParseError(&'static str);
+pub struct ParseError(&'static str);
 
 #[derive(Format)]
-pub(super) enum Telecommand {
+pub enum Telecommand {
     SetSource(FlipFlopState, Option<u8>),
     EnableSink(Sink, Option<u8>),
     DisableSink(Sink, Option<u8>),

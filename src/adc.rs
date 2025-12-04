@@ -1,6 +1,8 @@
 mod factory_calibrated_values;
+mod util;
 
-use crate::util::Sortable;
+use util::Sortable;
+
 use derive_more::Constructor;
 use embassy_stm32::{
     Peri,
