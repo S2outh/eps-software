@@ -1,5 +1,8 @@
 use embassy_sync::{channel::DynamicSender, watch::DynReceiver};
 
+use heapless::Vec;
+use tmtc_definitions::{TMValue, telemetry};
+
 use crate::EpsTelem;
 
 pub struct AuxPwr<'a> {
@@ -21,6 +24,7 @@ impl<'a> AuxPwr<'a> {
         self.adc_recv.get().await
     }
     pub async fn run(&mut self) {
-        todo!()
+        let tm_data = Vec::from_array(self.get_voltage().await.to_bytes());
+        self.tm_sender.send((telemetry::eps::AuxPowerVoltage::ID, tm_data)).await;
     }
 }

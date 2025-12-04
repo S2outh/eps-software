@@ -37,9 +37,10 @@ use embassy_stm32::{
     time::khz,
     wdg::IndependentWatchdog,
 };
-use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, channel::{Channel, Receiver, Sender}, mutex::Mutex, watch::Watch};
+use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, channel::{Channel, DynamicSender, Receiver, Sender}, mutex::Mutex, watch::{DynReceiver, Watch}};
 use embassy_time::Timer;
 use static_cell::StaticCell;
+use tmtc_definitions::{TMValue, telemetry};
 
 use crate::{adc::AdcCtrlChannel, control_loop::telecommands::Telecommand};
 
@@ -120,10 +121,22 @@ pub async fn adc_thread(mut adc: AdcCtrl<'static, 'static, DMA1_CH1, 4>) {
     }
 }
 
-// battery task
+// Internal temperature tm task
+#[embassy_executor::task]
+pub async fn internal_temp_thread(tm_sender: DynamicSender<'static, EpsTelem>, mut temp_receiver: DynReceiver<'static, i16>) {
+    const INTERNAL_TEMP_LOOP_LEN_MS: u64 = 2000;
+    loop {
+        let tm_data = Vec::from_array(temp_receiver.get().await.to_bytes());
+        tm_sender.send((telemetry::eps::InternalTemperature::ID, tm_data)).await;
+
+        Timer::after_millis(INTERNAL_TEMP_LOOP_LEN_MS).await;
+    }
+}
+
+// Battery task
 #[embassy_executor::task(pool_size = 2)]
 pub async fn battery_thread(mut battery: Battery<'static, 'static>) {
-    const BTRY_LOOP_LEN_MS: u64 = 10;
+    const BTRY_LOOP_LEN_MS: u64 = 500;
     loop {
         battery.run().await;
         Timer::after_millis(BTRY_LOOP_LEN_MS).await;
@@ -133,7 +146,7 @@ pub async fn battery_thread(mut battery: Battery<'static, 'static>) {
 // Aux pwr task
 #[embassy_executor::task]
 pub async fn aux_pwr_thread(mut aux_pwr: AuxPwr<'static>) {
-    const AUX_LOOP_LEN_MS: u64 = 100;
+    const AUX_LOOP_LEN_MS: u64 = 500;
     loop {
         aux_pwr.run().await;
         Timer::after_millis(AUX_LOOP_LEN_MS).await;
@@ -218,24 +231,24 @@ async fn main(spawner: Spawner) {
 
     let bat_1_channel = AdcCtrlChannel::new(
         p.PA4.degrade_adc(),
-        bat_1_watch.sender().as_dyn(),
+        bat_1_watch.dyn_sender(),
         adc::conversion::calculate_voltage_10mv,
     );
     let bat_2_channel = AdcCtrlChannel::new(
         p.PA3.degrade_adc(),
-        bat_2_watch.sender().as_dyn(),
+        bat_2_watch.dyn_sender(),
         adc::conversion::calculate_voltage_10mv,
     );
     let aux_pwr_channel = AdcCtrlChannel::new(
         p.PA2.degrade_adc(),
-        aux_pwr_watch.sender().as_dyn(),
+        aux_pwr_watch.dyn_sender(),
         adc::conversion::calculate_voltage_10mv,
     );
 
     let adc = AdcCtrl::new(
         adc_periph,
         p.DMA1_CH1,
-        internal_temperature_watch.sender().as_dyn(),
+        internal_temperature_watch.dyn_sender(),
         [bat_1_channel, bat_2_channel, aux_pwr_channel],
     );
 
@@ -247,16 +260,28 @@ async fn main(spawner: Spawner) {
     let bat_1_tmp = Tmp100::new(temp_sensor_i2c, Resolution::BITS12, Addr0State::Floating)
         .await
         .inspect_err(|e| error!("could not establish connection to bat 1 temp sensor: {}", e));
-    let bat_1 = Battery::new(bat_1_tmp.ok(), bat_1_watch.receiver().unwrap().as_dyn(), tm_channel.dyn_sender()).await;
+    let bat_1 = Battery::new(
+        bat_1_tmp.ok(),
+        bat_1_watch.dyn_receiver().unwrap(),
+        tm_channel.dyn_sender(),
+        &telemetry::eps::Bat1Temperature,
+        &telemetry::eps::Bat1Voltage,
+    ).await;
 
     // second battery
     let bat_2_tmp = Tmp100::new(temp_sensor_i2c, Resolution::BITS12, Addr0State::Floating)
         .await
         .inspect_err(|e| error!("could not establish connection to bat 2 temp sensor: {}", e));
-    let bat_2 = Battery::new(bat_2_tmp.ok(), bat_2_watch.receiver().unwrap().as_dyn(), tm_channel.dyn_sender()).await;
+    let bat_2 = Battery::new(
+        bat_2_tmp.ok(),
+        bat_2_watch.dyn_receiver().unwrap(),
+        tm_channel.dyn_sender(),
+        &telemetry::eps::Bat2Temperature,
+        &telemetry::eps::Bat2Voltage,
+    ).await;
 
     // aux power
-    let aux_pwr = AuxPwr::new(aux_pwr_watch.receiver().unwrap().as_dyn(), tm_channel.dyn_sender()).await;
+    let aux_pwr = AuxPwr::new(aux_pwr_watch.dyn_receiver().unwrap(), tm_channel.dyn_sender()).await;
 
     // debug leds not used at the moment (might disrupt can)
     let _led1 = Output::new(p.PB7, Level::Low, Speed::Low);
@@ -285,10 +310,12 @@ async fn main(spawner: Spawner) {
         source_flip_flop,
         sink_ctrl,
         cmd_channel.dyn_receiver(),
+        tm_channel.dyn_sender(),
     );
 
     spawner.must_spawn(petter(watchdog));
     spawner.must_spawn(adc_thread(adc));
+    spawner.must_spawn(internal_temp_thread(tm_channel.dyn_sender(), internal_temperature_watch.dyn_receiver().unwrap()));
     spawner.must_spawn(ctrl_thread(control_loop));
     spawner.must_spawn(battery_thread(bat_1));
     spawner.must_spawn(battery_thread(bat_2));
