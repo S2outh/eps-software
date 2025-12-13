@@ -25,8 +25,7 @@ embedded-io-async = { version = "0.6.1" }
 embedded-can = "0.4.1"
 static_cell = { version = "2.1.1", features = ["nightly"] }
 
-rodos_can_interface = { version = "1.0.0", features = ["stm32g0b1ke"], default-features = false }
-tmtc-definitions = { version = "0.1.0", git = "ssh://git@github.com/S2outh/tmtc-definitions.git" }
+south-common = { version = "0.2.0", git = "ssh://git@github.com/S2outh/south-common.git" }
 
 derive_more = { version = "2.0.1", features = ["constructor"], default-features = false }
 once_cell = { version = "1.21.3", features = ["portable-atomic", "critical-section"], default-features = false }

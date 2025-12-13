@@ -8,7 +8,7 @@ use embassy_time::Timer;
 use heapless::Vec;
 use tmp100_drv::Tmp100;
 
-use tmtc_definitions::{DynTelemetryDefinition, TMValue};
+use south_common::{DynTelemetryDefinition, TMValue};
 
 use crate::EpsTelem;
 

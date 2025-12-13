@@ -41,9 +41,9 @@ use embassy_stm32::{
 use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, channel::{Channel, DynamicSender, Receiver, Sender}, mutex::Mutex, watch::{DynReceiver, Watch}};
 use embassy_time::Timer;
 use static_cell::StaticCell;
-use tmtc_definitions::{TMValue, DynTelemetryDefinition, telemetry};
+use south_common::{TMValue, DynTelemetryDefinition, telemetry, telecommands};
 
-use crate::{adc::AdcCtrlChannel, can_config::CanPeriphConfig, control_loop::telecommands::Telecommand, pwr_src::{aux_pwr, battery}};
+use crate::{adc::AdcCtrlChannel, control_loop::telecommands::Telecommand, can_config::CanPeriphConfig, pwr_src::{aux_pwr, battery}};
 
 use {defmt_rtt as _, panic_probe as _};
 
@@ -254,7 +254,7 @@ async fn main(spawner: Spawner) {
     let mut can_configurator = CanPeriphConfig::new(CanConfigurator::new(p.FDCAN1, p.PA11, p.PA12, Irqs));
 
     can_configurator
-        .add_receive_topic(tmtc_definitions::telecommands::Telecommand.id())
+        .add_receive_topic(telecommands::Telecommand.id())
         .unwrap();
 
     let can_interface = can_configurator.activate(

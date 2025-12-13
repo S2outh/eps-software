@@ -2,7 +2,7 @@ use embassy_sync::{channel::DynamicSender, watch::DynReceiver};
 
 use embassy_time::Timer;
 use heapless::Vec;
-use tmtc_definitions::{TMValue, DynTelemetryDefinition, telemetry};
+use south_common::{TMValue, DynTelemetryDefinition, telemetry};
 
 use crate::EpsTelem;
 

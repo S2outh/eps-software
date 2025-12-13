@@ -5,7 +5,7 @@ use embassy_futures::select::{Either, select};
 use embassy_sync::channel::{DynamicReceiver, DynamicSender};
 use embassy_time::Timer;
 use heapless::Vec;
-use tmtc_definitions::{DynTelemetryDefinition, telemetry};
+use south_common::{DynTelemetryDefinition, telemetry};
 
 use crate::EpsTelem;
 use crate::pwr_src::d_flip_flop::{DFlipFlop, FlipFlopInput};
