@@ -8,7 +8,6 @@
 
 mod adc;
 mod control_loop;
-mod can_config;
 #[allow(dead_code)]
 mod pwr_src;
 
@@ -41,9 +40,9 @@ use embassy_stm32::{
 use embassy_sync::{blocking_mutex::raw::ThreadModeRawMutex, channel::{Channel, DynamicSender, Receiver, Sender}, mutex::Mutex, watch::{DynReceiver, Watch}};
 use embassy_time::Timer;
 use static_cell::StaticCell;
-use south_common::{TMValue, DynTelemetryDefinition, telemetry, telecommands};
+use south_common::{TMValue, DynTelemetryDefinition, telemetry, telecommands, can_config::CanPeriphConfig};
 
-use crate::{adc::AdcCtrlChannel, control_loop::telecommands::Telecommand, can_config::CanPeriphConfig, pwr_src::{aux_pwr, battery}};
+use crate::{adc::AdcCtrlChannel, control_loop::telecommands::Telecommand, pwr_src::{aux_pwr, battery}};
 
 use {defmt_rtt as _, panic_probe as _};
 
