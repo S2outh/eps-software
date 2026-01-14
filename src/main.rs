@@ -26,7 +26,7 @@ use defmt::*;
 use embassy_executor::Spawner;
 use embassy_stm32::{
     Config,
-    adc::{Adc, AdcChannel},
+    adc::{Adc, AdcChannel, AdcConfig},
     bind_interrupts,
     can::{self, BufferedFdCanReceiver, BufferedFdCanSender, CanConfigurator, RxFdBuf, TxFdBuf, frame::FdFrame},
     gpio::{Level, Output, Speed},
@@ -182,7 +182,14 @@ async fn main(spawner: Spawner) {
     let sink_ctrl = SinkCtrl::new(p.PA9, p.PA5, p.PA0, p.PA15);
 
     // ADC setup
-    let adc_periph = Adc::new(p.ADC1);
+    let mut adc_config = AdcConfig::default();
+    adc_config.resolution = Some(embassy_stm32::adc::Resolution::BITS12);
+    // 16x oversampling
+    adc_config.oversampling_ratio = Some(embassy_stm32::adc::Ovsr::MUL16); // 2^n oversampling steps: 2^3 = 16
+    adc_config.oversampling_shift = Some(embassy_stm32::adc::Ovss::SHIFT4); // right shift of oversampling reg, usually n+1: avg = sum >> n+1
+    adc_config.oversampling_enable = Some(true); // enable oversampling feature
+
+    let adc_periph = Adc::new_with_config(p.ADC1, adc_config);
 
     let internal_temperature_watch = ITW.init(Watch::new());
     let bat_1_watch = B1W.init(Watch::new());

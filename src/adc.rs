@@ -25,7 +25,7 @@ pub async fn adc_thread(mut adc: AdcCtrl<'static, 'static, DMA1_CH1, 4>) {
 
 #[derive(Constructor)]
 pub struct AdcCtrlChannel<'a> {
-    channel: AnyAdcChannel<ADC1>,
+    channel: AnyAdcChannel<'a, ADC1>,
     sender: DynSender<'a, i16>,
     conversion_func: fn(u16) -> i16,
 }
@@ -78,17 +78,11 @@ pub struct AdcCtrl<'a, 'd, D: RxDma<ADC1>, const N: usize> {
 
 impl<'a, 'd, D: RxDma<ADC1>, const N: usize> AdcCtrl<'a, 'd, D, N> {
     pub fn new(
-        mut adc: Adc<'d, ADC1>,
+        adc: Adc<'d, ADC1>,
         dma_channel: Peri<'d, D>,
         temp_sender: DynSender<'a, i16>,
         external_channels: [AdcCtrlChannel<'a>; N - 1],
     ) -> Self {
-        adc.set_resolution(embassy_stm32::adc::Resolution::BITS12);
-        // 16x oversampling
-        adc.set_oversampling_ratio(0x03); // 2^n oversampling steps: 2^3 = 16
-        adc.set_oversampling_shift(0x04); // right shift of oversampling reg, usually n+1: avg = sum >> n+1
-        adc.oversampling_enable(true); // enable oversampling feature
-
         let temp_channel = AdcCtrlChannel::new(
             adc.enable_temperature().degrade_adc(),
             temp_sender,
