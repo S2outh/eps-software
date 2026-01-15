@@ -11,8 +11,6 @@ use south_common::TelemetryDefinition;
 
 use crate::EpsTMContainer;
 
-const ERROR_TMP: i16 = i16::MIN;
-
 // Battery task
 #[embassy_executor::task(pool_size = 2)]
 pub async fn battery_thread(mut battery: Battery<'static, 'static>) {
@@ -54,12 +52,10 @@ impl<'a, 'd> Battery<'a, 'd> {
         self.adc_recv.get().await
     }
     pub async fn run(&mut self) {
-        let container = EpsTMContainer::new(
-            self.temp_topic,
-            &self.get_temperature().await.unwrap_or(ERROR_TMP),
-        )
-        .unwrap();
-        self.tm_sender.send(container).await;
+        if let Some(temperature) = self.get_temperature().await {
+            let container = EpsTMContainer::new(self.temp_topic, &temperature).unwrap();
+            self.tm_sender.send(container).await;
+        }
 
         let container = EpsTMContainer::new(self.voltage_topic, &self.get_voltage().await).unwrap();
         self.tm_sender.send(container).await;
