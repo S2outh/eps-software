@@ -161,8 +161,8 @@ pub async fn tc_thread(
 ) {
     loop {
         match can_receiver.receive().await {
-            Ok(envelope) => match Telecommand::from_bytes(envelope.frame.data()) {
-                Ok(cmd) => tc_channel.send(cmd).await,
+            Ok(envelope) => match Telecommand::read(envelope.frame.data()) {
+                Ok((_, cmd)) => tc_channel.send(cmd).await,
                 Err(_) => error!("error parsing tc"),
             },
             Err(e) => error!("error in frame! {}", e),
