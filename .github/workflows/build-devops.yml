@@ -2,11 +2,9 @@ name: DevOps - Build
 
 on:
   push:
-    branches: [ "devops" ]
+    branches: ["devops"]
 
 env:
-  CARGO_TERM_COLOR: always
-  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
   GIT_TERMINAL_PROMPT: "0"
 
 jobs:
@@ -18,13 +16,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Force git to use a known global config file (so the rewrite is definitely picked up)
+      # If your nix build pulls private git deps, keep this (PAT over SSH).
       - name: Configure git auth for private deps (force PAT over SSH)
         shell: bash
         run: |
           mkdir -p "$HOME"
 
-          # Create the global git config explicitly
           cat > "$HOME/.gitconfig" <<EOF
           [url "https://x-access-token:${{ secrets.GH_READ_TOKEN }}@github.com/"]
             insteadOf = https://github.com/
@@ -33,34 +30,32 @@ jobs:
             insteadOf = git@github.com:
           EOF
 
-          # Verify rewrites are active
           git config --global --list | sed -n 's/^url\./url./p'
 
-      - name: Use Rust nightly
-        uses: dtolnay/rust-toolchain@nightly
-        with:
-          components: rustfmt, clippy
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v12
 
-      - name: Install thumbv6m-none-eabi target
-        run: rustup target add thumbv6m-none-eabi
+      # Caches /nix/store using GitHub Actions cache (speeds up subsequent builds)
+      - name: Cache Nix store
+        uses: DeterminateSystems/magic-nix-cache-action@v8
 
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: thumbv6m-none-eabi
-
-      - name: Generate version
+      - name: Build (nix)
+        shell: bash
         run: |
-          ver=$(cargo metadata --no-deps --format-version=1 | jq -r '.packages[0].version')
-          sha=$(git rev-parse --short=7 HEAD)
-          echo "FW_VERSION=v${ver}-${sha}" >> $GITHUB_ENV
-          echo "FW_HASH=${sha}" >> $GITHUB_ENV
+          nix --version
+          nix build --print-build-logs
 
-      - name: Build (release)
-        run: cargo +nightly build --release
+      # Upload whatever nix build produced. Usually nix build writes a ./result symlink.
+      - name: Collect build output
+        shell: bash
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          # copy the realized output (dereference symlink so artifact contains files)
+          cp -aL result/bin/. dist/
 
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
         with:
           name: firmware
-          path: target/thumbv6m-none-eabi/release/eps-software
+          path: dist
