@@ -29,6 +29,7 @@ class ProcessLogStream:
         """Gracefully stop probe-rs and reap the process so the probe is released."""
         if self._proc.poll() is None:
             # Best-effort graceful shutdown (probe-rs attach responds to SIGINT)
+            print("trying to close probe rs with SIGINT")
             try:
                 self._proc.send_signal(signal.SIGINT)
             except Exception:
@@ -38,6 +39,7 @@ class ProcessLogStream:
                 self._proc.wait(timeout=grace_s)
             except subprocess.TimeoutExpired:
                 # Escalate
+                print("trying to close probe rs with SIGTERM")
                 try:
                     self._proc.terminate()
                 except Exception:
@@ -45,6 +47,7 @@ class ProcessLogStream:
                 try:
                     self._proc.wait(timeout=grace_s)
                 except subprocess.TimeoutExpired:
+                    print("trying to close probe rs with SIGKILL")
                     try:
                         self._proc.kill()
                     except Exception:
@@ -52,6 +55,7 @@ class ProcessLogStream:
                     try:
                         self._proc.wait(timeout=grace_s)
                     except Exception:
+                        print("failed to close probe rs with SIGKILL")
                         pass
 
         # Close pipe to release resources
