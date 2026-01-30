@@ -1,49 +1,52 @@
 {
-  description = "embassy g0b1 flake";
+  description = "embassy flake";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
     fenix = {
-      url = "github:nix-community/fenix";
+      url = "github:nix-community/fenix/monthly";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
   outputs = { self, nixpkgs, fenix, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
-      let
+      let 
+        probe-rs-overlay = (final: prev: {
+          probe-rs-tools = prev.probe-rs-tools.overrideAttrs {
+            cargoBuildFeatures = [ "remote" ];
+          };
+        }); 
         pkgs = import nixpkgs {
           inherit system;
-          overlays = [ fenix.overlays.default ];
+          overlays = [
+            fenix.overlays.default 
+            probe-rs-overlay 
+          ];
         };
       in
       {
         devShells.default =
         let
-          toolchain = pkgs.fenix.toolchainOf {
-            channel = "nightly";
-            date = "2025-12-22";
-            sha256 = "sha256-bXz1imrwFz4Z5vlZV4jfRZWwsRma6Sk95IOuTMQFFVU=";
-          };
-          lib = pkgs.fenix.targets.thumbv6m-none-eabi.toolchainOf {
-            channel = "nightly";
-            date = "2025-12-22";
-            sha256 = "sha256-bXz1imrwFz4Z5vlZV4jfRZWwsRma6Sk95IOuTMQFFVU=";
-          };
-          rust = pkgs.fenix.combine [
-            toolchain.rustc
+          toolchain = pkgs.fenix.complete;
+          std-lib = pkgs.fenix.targets.thumbv6m-none-eabi.latest;
+          rust-pkgs = pkgs.fenix.combine [
+            toolchain.rustc-unwrapped
             toolchain.rust-src
             toolchain.cargo
             toolchain.rustfmt
             toolchain.clippy
-            lib.rust-std
+            std-lib.rust-std
           ];
         in
         pkgs.mkShell {
           buildInputs = with pkgs; [
-            rust
+            rust-pkgs
+
+            # extra cargo tools
             cargo-edit
+            cargo-expand
 
             # for flashing
             probe-rs-tools
@@ -52,6 +55,8 @@
             pkg-config
           ];
 
+          # set the rust src for rust_analyzer
+          RUST_SRC_PATH = "${rust-pkgs}/lib/rustlib/src/rust/library";
 					# set default defmt log level
 					DEFMT_LOG = "info";
         };
