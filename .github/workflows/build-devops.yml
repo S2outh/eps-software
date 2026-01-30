@@ -1,0 +1,41 @@
+name: DevOps - Build
+
+on:
+  push:
+    branches: [ "devops" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt, clippy
+
+      # Optional but recommended: speed up builds
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Generate version
+        run: |
+          ver=$(cargo metadata --no-deps --format-version=1 | jq -r '.packages[0].version')
+          sha=$(git rev-parse --short=7 HEAD)
+          echo "FW_VERSION=v${ver}-${sha}" >> $GITHUB_ENV
+          echo "FW_HASH=${sha}" >> $GITHUB_ENV
+
+      - name: Build (release)
+        run: cargo +nightly build --release
+        # If you want nightly for everything, you can omit +nightly once the toolchain is set,
+        # but keeping it makes the intent explicit.
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: target/release/**
