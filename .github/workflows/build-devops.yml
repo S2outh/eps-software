@@ -41,8 +41,13 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Install thumbv6m-none-eabi target
+        run: rustup target add thumbv6m-none-eabi
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: thumbv6m-none-eabi
 
       - name: Generate version
         run: |
