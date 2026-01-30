@@ -50,7 +50,7 @@ jobs:
       - name: Download firmware bin from build run
         uses: actions/download-artifact@v4
         with:
-          name: firmware-bin
+          name: firmware
           run-id: ${{ steps.run.outputs.RUN_ID }}
           path: ./fw
 
