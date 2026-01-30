@@ -63,4 +63,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: firmware
-          path: target/release/**
+          path: target/thumbv6m-none-eabi/release/eps-software
