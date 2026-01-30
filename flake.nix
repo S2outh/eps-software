@@ -50,9 +50,6 @@
 
             # for flashing
             probe-rs-tools
-
-            # for external deps
-            pkg-config
           ];
 
           # set the rust src for rust_analyzer
