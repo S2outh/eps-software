@@ -16,6 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      fw_version: ${{ steps.ver.outputs.fw_version }}
+      fw_hash: ${{ steps.ver.outputs.fw_hash }}
 
     steps:
       - uses: actions/checkout@v4
@@ -37,6 +40,8 @@ jobs:
           git config --global --list | sed -n 's/^url\./url./p'
 
       - name: Generate version
+        id: ver
+        shell: bash
         run: |
           ver=$(cargo metadata --no-deps --format-version=1 | jq -r '.packages[0].version')
           sha=$(git rev-parse --short=7 HEAD)
@@ -96,6 +101,12 @@ jobs:
         with:
           name: firmware
           path: ./fw
+
+      - name: Show firmware version vars
+        shell: bash
+        run: |
+          echo "FW_VERSION=$FW_VERSION"
+          echo "FW_HASH=$FW_HASH"
 
       - name: Setup probe-rs
         uses: S2outh/setup-probe-rs-action@v1

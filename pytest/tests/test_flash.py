@@ -7,8 +7,8 @@ def test_flash(labgrid_session):
 
     binary = "fw/eps-software"          # path if not in repo root
 
-    fw_version = os.environ.get("FW_VERSION", "no-version")
-    fw_hash = os.environ.get("FW_HASH", "no-hash")
+    fw_version = os.environ.get("FW_VERSION") or "no-version"
+    fw_hash = os.environ.get("FW_HASH") or "no-hash"
 
     print(f"flashing eps with firmware {fw_version}")
     # flash binary
@@ -17,7 +17,7 @@ def test_flash(labgrid_session):
     print("verifying version")
 
     # attach with reset and read logs line-by-line from the test
-    stream = d.attach_with_reset(binary, timeout=10.0)
+    stream = d.attach_with_reset(binary, timeout=30.0)
 
     try:
         it = stream.iter_lines()
