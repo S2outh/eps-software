@@ -1,0 +1,88 @@
+name: DevOps - Flash Firmware
+
+on:
+  workflow_run:
+    workflows: ["DevOps - Build"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Build run id"
+        required: false
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  flash:
+    if: >
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event.workflow_run.conclusion == 'success')
+    runs-on: [self-hosted, flatsat, hil]
+    env:
+      LG_COORDINATOR: labgrid-coordinator:20408
+      PROBE_RS_VERSION: v0.31.0
+      PROBE_RS_INSTALL_ROOT: /opt/probe-rs
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Choose run id
+        id: run
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.run_id }}" ]; then
+            echo "RUN_ID=${{ inputs.run_id }}" >> $GITHUB_OUTPUT
+          else
+            echo "RUN_ID=${{ github.event.workflow_run.id }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+
+      - name: Download firmware bin from build run
+        uses: actions/download-artifact@v4
+        with:
+          name: firmware-bin
+          run-id: ${{ steps.run.outputs.RUN_ID }}
+          path: ./fw
+
+      - name: Setup probe-rs
+        uses: S2outh/setup-probe-rs-action@v1
+        with:
+          version: ${{PROBE_RS_VERSION}}
+
+      - name: Write labgrid env.yaml from secret
+        shell: bash
+        run: |
+          mkdir -p pytest
+          cat > pytest/env.yaml <<'EOF'
+          ${{ secrets.LABGRID_ENV }}
+          EOF
+          chmod 600 pytest/env.yaml
+
+      - name: Run tests
+        run: |
+          pytest -q --capture=tee-sys --junitxml=test-results/junit.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-results
+          path: test-results/junit.xml
+
+      - name: Publish test report
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: pytest
+          path: test-results/junit.xml
+          reporter: java-junit
