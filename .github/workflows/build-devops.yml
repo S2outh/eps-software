@@ -13,9 +13,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure git auth for private deps
+      - name: Configure git auth for private deps (force HTTPS)
         run: |
+          # Any https://github.com/... will be fetched with the PAT
           git config --global url."https://x-access-token:${{ secrets.GH_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+          # Rewrite common SSH forms to HTTPS so PAT is used instead of SSH keys
+          git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+          # Optional: make sure no interactive prompts block CI
+          git config --global core.askPass true
 
       - name: Use Rust nightly
         uses: dtolnay/rust-toolchain@nightly
