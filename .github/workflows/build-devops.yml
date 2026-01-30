@@ -7,6 +7,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+  GIT_TERMINAL_PROMPT: "0"
 
 jobs:
   build:
@@ -17,19 +18,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Force git to use a known global config file (so the rewrite is definitely picked up)
       - name: Configure git auth for private deps (force PAT over SSH)
+        shell: bash
         run: |
-          # Rewrite ALL GitHub fetches (https + ssh forms) to token-authenticated HTTPS
-          git config --global url."https://x-access-token:${{ secrets.GH_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+          cat > "$GITHUB_WORKSPACE/.gitconfig" <<'EOF'
+          [url "https://x-access-token:${{ secrets.GH_READ_TOKEN }}@github.com/"]
+            insteadOf = https://github.com/
+            insteadOf = ssh://git@github.com/
+            insteadOf = ssh://git@github.com:
+            insteadOf = git@github.com:
+          EOF
 
-          # SSH forms:
-          git config --global url."https://x-access-token:${{ secrets.GH_READ_TOKEN }}@github.com/".insteadOf "git@github.com:"
-          git config --global url."https://x-access-token:${{ secrets.GH_READ_TOKEN }}@github.com/".insteadOf "ssh://git@github.com/"
-          # Host-with-colon form (as you observed): ssh://git@github.com:ORG/REPO.git
-          git config --global url."https://x-access-token:${{ secrets.GH_READ_TOKEN }}@github.com/".insteadOf "ssh://git@github.com:"
+          echo "GIT_CONFIG_GLOBAL=$GITHUB_WORKSPACE/.gitconfig" >> "$GITHUB_ENV"
 
-          # Avoid interactive prompts in CI
-          git config --global core.askPass true
+          # Optional sanity check (prints the rewrite rules)
+          git config --global --list | sed -n 's/^url\./url./p'
 
       - name: Use Rust nightly
         uses: dtolnay/rust-toolchain@nightly
