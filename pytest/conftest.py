@@ -2,8 +2,8 @@ import os
 import subprocess
 import pytest
 from labgrid import Environment
-import http_led_driver  # registers driver
-import probe_rs_driver  # registers driver
+import drivers.http_led_driver  # registers driver
+import drivers.probe_rs_driver  # registers driver
 
 COORD = os.environ["LG_COORDINATOR"]
 PLACE = "flatsat"
