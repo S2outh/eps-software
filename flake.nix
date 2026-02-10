@@ -72,6 +72,5 @@
           DEFMT_LOG = "info";
         };
       }
-
     );
 }
