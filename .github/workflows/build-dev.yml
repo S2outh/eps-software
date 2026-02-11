@@ -1,8 +1,8 @@
-name: DevOps - Build and Flash
+name: Dev - Build and Flash
 
 on:
   push:
-    branches: ["devops"]
+    branches: ["dev"]
 
 permissions:
   contents: read
