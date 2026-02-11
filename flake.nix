@@ -56,8 +56,8 @@
 
           # set the rust src for rust_analyzer
           RUST_SRC_PATH = "${rust-toolchain}/lib/rustlib/src/rust/library";
-					# set default defmt log level
-					DEFMT_LOG = "info";
+          # set default defmt log level
+          DEFMT_LOG = "info";
         };
 
         packages.default = 
@@ -66,9 +66,11 @@
           rustc = rust-toolchain;
         }).buildPackage {
           src = ./.;
-					DEFMT_LOG = "info";
+          FW_VERSION = builtins.getEnv "FW_VERSION";
+          FW_HASH    = builtins.getEnv "FW_HASH";
+
+          DEFMT_LOG = "info";
         };
       }
-
     );
 }

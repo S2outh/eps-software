@@ -182,7 +182,15 @@ async fn main(spawner: Spawner) {
     let mut config = Config::default();
     config.rcc = get_rcc_config();
     let p = embassy_stm32::init(config);
-    info!("Launching");
+
+    const FW_VERSION: &str = env!("FW_VERSION");
+    const FW_HASH: &str = env!("FW_HASH");
+
+    info!(
+        "Launching: FW version={} hash={}",
+        FW_VERSION,
+        FW_HASH
+    );
 
     // unleash independent watchdog
     let mut watchdog = IndependentWatchdog::new(p.IWDG, WATCHDOG_TIMEOUT_US);
