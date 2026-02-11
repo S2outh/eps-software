@@ -22,6 +22,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN }}
 
       # If your nix build pulls private git deps, keep this (PAT over SSH).
       - name: Configure git auth for private deps (force PAT over SSH)
@@ -30,7 +32,7 @@ jobs:
           mkdir -p "$HOME"
 
           cat > "$HOME/.gitconfig" <<EOF
-          [url "https://x-access-token:${{ secrets.GH_READ_TOKEN }}@github.com/"]
+          [url "https://x-access-token:${{ secrets.GH_TOKEN }}@github.com/"]
             insteadOf = https://github.com/
             insteadOf = ssh://git@github.com/
             insteadOf = ssh://git@github.com:

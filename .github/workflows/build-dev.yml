@@ -30,7 +30,7 @@ jobs:
           mkdir -p "$HOME"
 
           cat > "$HOME/.gitconfig" <<EOF
-          [url "https://x-access-token:${{ secrets.GH_READ_TOKEN }}@github.com/"]
+          [url "https://x-access-token:${{ secrets.GH_TOKEN }}@github.com/"]
             insteadOf = https://github.com/
             insteadOf = ssh://git@github.com/
             insteadOf = ssh://git@github.com:
