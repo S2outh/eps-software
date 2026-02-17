@@ -1,24 +1,12 @@
-use crate::bitflags;
 use embassy_futures::select::{Either, select};
 use embassy_sync::channel::{DynamicReceiver, DynamicSender};
 use embassy_time::{Duration, Instant, Timer};
-use south_common::telemetry::eps as tm;
+use south_common::definitions::telemetry::eps as tm;
 
 use crate::EpsTMContainer;
 use crate::pwr_src::d_flip_flop::{DFlipFlop, FlipFlopInput};
 use crate::pwr_src::sink_ctrl::SinkCtrl;
-use south_common::types::{EPSCommand, Sink, Telecommand};
-
-bitflags! {
-    pub struct Enabled: u8 {
-        const BAT1      = 1 << 0;
-        const BAT2      = 1 << 1;
-        const AUXPWR    = 1 << 2;
-        const ROCKETLST = 1 << 3;
-        const SENSORUPP = 1 << 4;
-        const ROCKETHD  = 1 << 5;
-    }
-}
+use south_common::types::{EPSCommand, EPSEnabled, Sink, Telecommand};
 
 const CTRL_LOOP_TM_INTERVAL: Duration = Duration::from_millis(500);
 
@@ -97,29 +85,29 @@ impl<'d> ControlLoop<'d> {
     }
     async fn send_state(&mut self) {
         Timer::at(self.next_tm).await;
-
-        let mut bitmap = Enabled::empty();
+        
+        let mut bitmap = EPSEnabled::empty();
         bitmap.set(
-            Enabled::BAT1,
+            EPSEnabled::BAT1,
             self.source_flip_flop.is_enabled(FlipFlopInput::Bat1),
         );
         bitmap.set(
-            Enabled::BAT2,
+            EPSEnabled::BAT2,
             self.source_flip_flop.is_enabled(FlipFlopInput::Bat2),
         );
         bitmap.set(
-            Enabled::AUXPWR,
+            EPSEnabled::AUXPWR,
             self.source_flip_flop.is_enabled(FlipFlopInput::AuxPwr),
         );
         bitmap.set(
-            Enabled::ROCKETLST,
+            EPSEnabled::ROCKETLST,
             self.sink_ctrl.is_enabled(Sink::RocketLST),
         );
         bitmap.set(
-            Enabled::SENSORUPP,
+            EPSEnabled::SENSORUPP,
             self.sink_ctrl.is_enabled(Sink::SensorUpper),
         );
-        bitmap.set(Enabled::ROCKETHD, self.sink_ctrl.is_enabled(Sink::RocketHD));
+        bitmap.set(EPSEnabled::ROCKETHD, self.sink_ctrl.is_enabled(Sink::RocketHD));
 
         let container = EpsTMContainer::new(&tm::EnableBitmap, &bitmap.bits()).unwrap();
         self.tm_sender.send(container).await;

@@ -1,7 +1,7 @@
 use embassy_sync::{channel::DynamicSender, watch::DynReceiver};
 
 use embassy_time::{Duration, Instant, Timer};
-use south_common::telemetry::eps as tm;
+use south_common::definitions::telemetry::eps as tm;
 
 use crate::EpsTMContainer;
 
