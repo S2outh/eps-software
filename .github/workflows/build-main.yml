@@ -80,8 +80,8 @@ jobs:
           path: ./fw
 
       - name: Run integration tests
-        uses: S2outh/hil-tests@v1
+        uses: S2outh/hil-tests@v1.1
         with:
-          binary-file: fw/eps-software
+          binary-file: ${{ github.workspace }}/fw/eps-software
           fw-version: ${{ needs.build.outputs.fw_version }}
           fw-hash: ${{ needs.build.outputs.fw_hash }}
