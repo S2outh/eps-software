@@ -48,8 +48,10 @@ use embassy_sync::{
 };
 use embassy_time::{Duration, Instant, Timer};
 use south_common::{
-    TMValue, TelemetryContainer, TelemetryDefinition, can_config::CanPeriphConfig, telecommands,
-    telemetry::eps as tm, telemetry_container, types::Telecommand,
+    tmtc_system::{TMValue, TelemetryContainer, TelemetryDefinition, telemetry_container},
+    can_config::CanPeriphConfig,
+    definitions::telecommands,
+    definitions::telemetry::eps as tm, types::Telecommand,
 };
 use static_cell::StaticCell;
 
