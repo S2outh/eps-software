@@ -80,7 +80,7 @@ jobs:
           path: ./fw
 
       - name: Run integration tests
-        uses: S2outh/hil-tests@v2.0
+        uses: S2outh/hil-tests@main
         with:
           probe-name: probe-eps
           binary-file: ${{ github.workspace }}/fw/eps-software
