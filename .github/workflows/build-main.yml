@@ -54,7 +54,7 @@ jobs:
         uses: NixOS/nix-installer-action@main
         with:
           extra-conf: |
-            experimental-features = nix-command flake
+            experimental-features = nix-command flakes
 
       - name: Build (nix)
         shell: bash
@@ -66,7 +66,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: firmware
-          path: result/bin
+          path: ${{ github.workspace }}/result/bin
 
   flash:
     needs: build
@@ -80,8 +80,9 @@ jobs:
           path: ./fw
 
       - name: Run integration tests
-        uses: S2outh/hil-tests@v1.7
+        uses: S2outh/hil-tests@main
         with:
+          probe-name: probe-eps
           binary-file: ${{ github.workspace }}/fw/eps-software
           fw-version: ${{ needs.build.outputs.fw_version }}
           fw-hash: ${{ needs.build.outputs.fw_hash }}
