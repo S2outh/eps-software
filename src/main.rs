@@ -46,7 +46,7 @@ use embassy_sync::{
     mutex::Mutex,
     watch::{DynReceiver, Watch},
 };
-use embassy_time::{Duration, Instant, Timer};
+use embassy_time::{Duration, Ticker, Timer};
 use south_common::{
     tmtc_system::{TMValue, TelemetryContainer, TelemetryDefinition, telemetry_container},
     can_config::CanPeriphConfig,
@@ -135,14 +135,13 @@ pub async fn internal_temp_thread(
     mut temp_receiver: DynReceiver<'static, i16>,
 ) {
     const INTERNAL_TEMP_LOOP_LEN: Duration = Duration::from_secs(2);
-    let mut loop_time = Instant::now();
+    let mut ticker = Ticker::every(INTERNAL_TEMP_LOOP_LEN);
     loop {
         let container =
             EpsTMContainer::new(&tm::InternalTemperature, &temp_receiver.get().await).unwrap();
         tm_sender.send(container).await;
 
-        loop_time += INTERNAL_TEMP_LOOP_LEN;
-        Timer::at(loop_time).await;
+        ticker.next().await;
     }
 }
 

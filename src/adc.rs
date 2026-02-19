@@ -1,7 +1,7 @@
 mod factory_calibrated_values;
 mod util;
 
-use embassy_time::{Duration, Instant, Timer};
+use embassy_time::{Duration, Ticker};
 use util::Sortable;
 
 use derive_more::Constructor;
@@ -17,11 +17,10 @@ use heapless::Vec;
 #[embassy_executor::task]
 pub async fn adc_thread(mut adc: AdcCtrl<'static, 'static, DMA1_CH1, 4>) {
     const ADC_LOOP_LEN: Duration = Duration::from_millis(100);
-    let mut loop_time = Instant::now();
+    let mut ticker = Ticker::every(ADC_LOOP_LEN);
     loop {
         adc.run().await;
-        loop_time += ADC_LOOP_LEN;
-        Timer::at(loop_time).await;
+        ticker.next().await;
     }
 }
 
