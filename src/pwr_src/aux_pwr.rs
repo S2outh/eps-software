@@ -17,26 +17,17 @@ pub async fn aux_pwr_thread(mut aux_pwr: AuxPwr<'static>) {
 }
 
 pub struct AuxPwr<'a> {
-    adc_recv: DynReceiver<'a, i16>,
     tm_sender: DynamicSender<'a, EpsTMContainer>,
 }
 
 impl<'a> AuxPwr<'a> {
     pub async fn new(
-        adc_recv: DynReceiver<'a, i16>,
         tm_sender: DynamicSender<'a, EpsTMContainer>,
     ) -> Self {
         Self {
-            adc_recv,
             tm_sender,
         }
     }
-    async fn get_voltage(&mut self) -> i16 {
-        self.adc_recv.get().await
-    }
     pub async fn run(&mut self) {
-        let container =
-            EpsTMContainer::new(&tm::AuxPowerVoltage, &self.get_voltage().await).unwrap();
-        self.tm_sender.send(container).await;
     }
 }

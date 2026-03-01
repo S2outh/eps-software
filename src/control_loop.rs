@@ -6,7 +6,7 @@ use south_common::definitions::telemetry::eps as tm;
 use crate::EpsTMContainer;
 use crate::pwr_src::d_flip_flop::{DFlipFlop, FlipFlopInput};
 use crate::pwr_src::sink_ctrl::SinkCtrl;
-use south_common::types::{EPSCommand, EPSEnabled, Sink, Telecommand};
+use south_common::types::{EPSCommand, SinkEnabled, SourceEnabled, Sink, Telecommand};
 
 const CTRL_LOOP_TM_INTERVAL: Duration = Duration::from_millis(500);
 
@@ -25,6 +25,20 @@ pub struct ControlLoop<'d> {
     cmd_receiver: DynamicReceiver<'d, Telecommand>,
     tm_sender: DynamicSender<'d, EpsTMContainer>,
 }
+
+// macro_rules! populate_bitmap {
+//     ($bm:ident, $(($field:ident, $fn:ident)),*) => {
+//         paste::paste!{
+//             let [<$bm:snake>] = $bm::empty();
+//             $(
+//                 [<$bm:snake>].set(
+//                     $bm::[<$field:snake:upper>],
+//                     $fn
+//                 );
+//             )*
+//         }
+//     };
+// }
 
 impl<'d> ControlLoop<'d> {
     pub fn spawn(
@@ -86,30 +100,54 @@ impl<'d> ControlLoop<'d> {
     async fn send_state(&mut self) {
         Timer::at(self.next_tm).await;
         
-        let mut bitmap = EPSEnabled::empty();
-        bitmap.set(
-            EPSEnabled::BAT1,
+        let mut source_bitmap = SourceEnabled::empty();
+        source_bitmap.set(
+            SourceEnabled::BAT_1,
             self.source_flip_flop.is_enabled(FlipFlopInput::Bat1),
         );
-        bitmap.set(
-            EPSEnabled::BAT2,
+        source_bitmap.set(
+            SourceEnabled::BAT_2,
             self.source_flip_flop.is_enabled(FlipFlopInput::Bat2),
         );
-        bitmap.set(
-            EPSEnabled::AUXPWR,
+        source_bitmap.set(
+            SourceEnabled::AUX_PWR,
             self.source_flip_flop.is_enabled(FlipFlopInput::AuxPwr),
         );
-        bitmap.set(
-            EPSEnabled::ROCKETLST,
+
+        let container = EpsTMContainer::new(&tm::SourceEnabled, &source_bitmap.bits()).unwrap();
+        self.tm_sender.send(container).await;
+
+        let mut sink_bitmap = SinkEnabled::empty();
+        sink_bitmap.set(
+            SinkEnabled::CARRIER,
+            self.sink_ctrl.is_enabled(Sink::Carrier),
+        );
+        sink_bitmap.set(
+            SinkEnabled::ROCKETLST,
             self.sink_ctrl.is_enabled(Sink::RocketLST),
         );
-        bitmap.set(
-            EPSEnabled::SENSORUPP,
-            self.sink_ctrl.is_enabled(Sink::SensorUpper),
+        sink_bitmap.set(
+            SinkEnabled::GPS,
+            self.sink_ctrl.is_enabled(Sink::GPS),
         );
-        bitmap.set(EPSEnabled::ROCKETHD, self.sink_ctrl.is_enabled(Sink::RocketHD));
+        sink_bitmap.set(
+            SinkEnabled::EXT_CAM,
+            self.sink_ctrl.is_enabled(Sink::ExternalCamera),
+        );
+        sink_bitmap.set(
+            SinkEnabled::LOWER_SENS,
+            self.sink_ctrl.is_enabled(Sink::SensorLower),
+        );
+        sink_bitmap.set(
+            SinkEnabled::ROCKETHD,
+            self.sink_ctrl.is_enabled(Sink::RocketHD),
+        );
+        sink_bitmap.set(
+            SinkEnabled::BACKUP,
+            self.sink_ctrl.is_enabled(Sink::BackupSink),
+        );
 
-        let container = EpsTMContainer::new(&tm::EnableBitmap, &bitmap.bits()).unwrap();
+        let container = EpsTMContainer::new(&tm::SinkEnabled, &sink_bitmap.bits()).unwrap();
         self.tm_sender.send(container).await;
     }
     pub async fn run(&mut self) {
