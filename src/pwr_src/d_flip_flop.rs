@@ -4,7 +4,7 @@ use embassy_stm32::{
     gpio::{Input, Level, Output, Pin, Pull, Speed},
 };
 use embassy_time::Timer;
-use south_common::types::FlipFlopState;
+use south_common::types::eps::FlipFlopState;
 
 #[repr(u8)]
 #[derive(Format, Clone, Copy)]

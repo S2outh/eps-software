@@ -210,12 +210,12 @@ async fn main(spawner: Spawner) {
     // sink ctrl
     let sink_ctrl = SinkCtrl::new(
         p.PA5, // carrier
-        p.PA9, // rocketlst
-        p.PA3, // gps
-        p.PC6, // ExternalCam
+        p.PA3, // umbilical
+        p.PC6, // rocketlst 1
+        p.PA9, // rocketlst 2
         p.PA8, // SensorLower
-        p.PA15, // RocketHD
-        p.PA4 // BackupSink
+        p.PA15,// RocketHD
+        p.PA4  // BackupSink
     );
 
     // TM channel setup

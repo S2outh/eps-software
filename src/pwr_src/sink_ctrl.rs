@@ -2,7 +2,7 @@ use embassy_stm32::{
     Peri,
     gpio::{Level, Output, Pin, Speed},
 };
-use south_common::types::Sink;
+use south_common::types::eps::Sink;
 
 macro_rules! sink {
     ($($sink:ident),*) => {paste::paste!{
@@ -28,9 +28,9 @@ macro_rules! sink {
 }
 sink!(
     Carrier,
-    RocketLST,
-    GPS,
-    ExternalCamera,
+    Umbilical,
+    RocketLst1,
+    RocketLst2,
     SensorLower,
     RocketHD,
     BackupSink

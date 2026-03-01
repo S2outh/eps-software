@@ -2,11 +2,12 @@ use embassy_futures::select::{Either, select};
 use embassy_sync::channel::{DynamicReceiver, DynamicSender};
 use embassy_time::{Duration, Instant, Timer};
 use south_common::definitions::telemetry::eps as tm;
+use south_common::types::Telecommand;
 
 use crate::EpsTMContainer;
 use crate::pwr_src::d_flip_flop::{DFlipFlop, FlipFlopInput};
 use crate::pwr_src::sink_ctrl::SinkCtrl;
-use south_common::types::{EPSCommand, SinkEnabled, SourceEnabled, Sink, Telecommand};
+use south_common::types::eps::{EPSCommand, SinkEnabled, SourceEnabled, Sink};
 
 const CTRL_LOOP_TM_INTERVAL: Duration = Duration::from_millis(500);
 
@@ -123,27 +124,27 @@ impl<'d> ControlLoop<'d> {
             self.sink_ctrl.is_enabled(Sink::Carrier),
         );
         sink_bitmap.set(
-            SinkEnabled::ROCKETLST,
-            self.sink_ctrl.is_enabled(Sink::RocketLST),
+            SinkEnabled::UMBILICAL,
+            self.sink_ctrl.is_enabled(Sink::Umbilical),
         );
         sink_bitmap.set(
-            SinkEnabled::GPS,
-            self.sink_ctrl.is_enabled(Sink::GPS),
+            SinkEnabled::ROCKET_LST_1,
+            self.sink_ctrl.is_enabled(Sink::RocketLst1),
         );
         sink_bitmap.set(
-            SinkEnabled::EXT_CAM,
-            self.sink_ctrl.is_enabled(Sink::ExternalCamera),
+            SinkEnabled::ROCKET_LST_2,
+            self.sink_ctrl.is_enabled(Sink::RocketLst2),
         );
         sink_bitmap.set(
-            SinkEnabled::LOWER_SENS,
+            SinkEnabled::SENSOR_LOWER,
             self.sink_ctrl.is_enabled(Sink::SensorLower),
         );
         sink_bitmap.set(
-            SinkEnabled::ROCKETHD,
+            SinkEnabled::ROCKET_HD,
             self.sink_ctrl.is_enabled(Sink::RocketHD),
         );
         sink_bitmap.set(
-            SinkEnabled::BACKUP,
+            SinkEnabled::BACKUP_SINK,
             self.sink_ctrl.is_enabled(Sink::BackupSink),
         );
 
