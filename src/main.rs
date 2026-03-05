@@ -45,8 +45,8 @@ use embassy_sync::{
 use embassy_time::{Timer};
 use south_common::{
     tmtc_system::{TMValue, TelemetryContainer, TelemetryDefinition, telemetry_container},
-    can_config::CanPeriphConfig,
-    definitions::telecommands,
+    configs::can_config::CanPeriphConfig,
+    definitions::internal_msgs,
     definitions::telemetry::eps as tm, types::Telecommand,
 };
 use static_cell::StaticCell;
@@ -264,7 +264,7 @@ async fn main(spawner: Spawner) {
         CanPeriphConfig::new(CanConfigurator::new(p.FDCAN1, p.PA11, p.PA12, Irqs));
 
     can_configurator
-        .add_receive_topic(telecommands::Telecommand.id())
+        .add_receive_topic(internal_msgs::Telecommand.id())
         .unwrap();
 
     let can_interface = can_configurator.activate(
