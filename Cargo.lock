@@ -546,6 +546,7 @@ dependencies = [
 name = "eps-software"
 version = "0.1.0"
 dependencies = [
+ "bitflags 2.11.0",
  "cortex-m",
  "cortex-m-rt",
  "defmt 1.0.1",

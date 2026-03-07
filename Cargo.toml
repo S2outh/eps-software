@@ -29,6 +29,7 @@ south-common = { version = "3.0.0", features = ["g0"], git = "ssh://git@github.c
 
 derive_more = { version = "2.1.1", features = ["constructor"], default-features = false }
 paste = "1.0.15"
+bitflags = "2.11.0"
 
 [profile.release]
 debug = 2

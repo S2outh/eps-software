@@ -34,7 +34,7 @@ use embassy_stm32::{
     mode::Async,
     peripherals::{self, FDCAN1, IWDG},
     rcc::{self, mux::Fdcansel},
-    time::khz,
+    time::mhz,
     wdg::IndependentWatchdog,
 };
 use embassy_sync::{
@@ -42,7 +42,7 @@ use embassy_sync::{
     channel::{Channel, Receiver, Sender},
     mutex::Mutex,
 };
-use embassy_time::{Timer};
+use embassy_time::Timer;
 use south_common::{
     tmtc_system::{TMValue, TelemetryContainer, TelemetryDefinition, telemetry_container},
     configs::can_config::CanPeriphConfig,
@@ -194,17 +194,17 @@ async fn main(spawner: Spawner) {
 
     // i2c for temperature sensors
     let mut i2c_config = i2c::Config::default();
-    i2c_config.frequency = khz(400);
+    i2c_config.frequency = mhz(2);
     let temp_sensor_i2c = I2C.init(Mutex::new(I2c::new(
         p.I2C2, p.PA7, p.PA6, Irqs, p.DMA1_CH2, p.DMA1_CH3, i2c_config,
     )));
 
     // flip flop
     let source_flip_flop = DFlipFlop::new(
-        p.PB6, p.PC14, // bat 1
-        p.PB7, p.PB9, // bat 2
-        p.PB8, p.PC15, // aux pwr
-        p.PB5,  // clk
+        p.PB6, p.PC14,  // bat 1
+        p.PB7, p.PB9,   // bat 2
+        p.PB8, p.PC15,  // aux pwr
+        p.PB5,          // clk
     );
 
     // sink ctrl
