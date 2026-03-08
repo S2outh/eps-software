@@ -90,11 +90,6 @@ const WATCHDOG_PETTING_INTERVAL_US: u32 = WATCHDOG_TIMEOUT_US / 2;
 type EpsTMContainer = telemetry_container!(tm);
 
 // static concurrency sync management types
-// static ITW: StaticCell<Watch<ThreadModeRawMutex, i16, 1>> = StaticCell::new();
-// static B1W: StaticCell<Watch<ThreadModeRawMutex, i16, 1>> = StaticCell::new();
-// static B2W: StaticCell<Watch<ThreadModeRawMutex, i16, 1>> = StaticCell::new();
-// static APW: StaticCell<Watch<ThreadModeRawMutex, i16, 1>> = StaticCell::new();
-
 const TM_CHANNEL_BUF_SIZE: usize = 5;
 const CMD_CHANNEL_BUF_SIZE: usize = 5;
 static TMC: StaticCell<Channel<ThreadModeRawMutex, EpsTMContainer, TM_CHANNEL_BUF_SIZE>> =

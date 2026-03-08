@@ -24,14 +24,14 @@ pub async fn ina_thread(
     }
 
     let mut ina_config = InaConfig::new();
-    ina_config.avg_mode = crate::pwr_src::ina3221_drv::AvgMode::Sample512;
-    ina_config.bus_conversion_time = crate::pwr_src::ina3221_drv::ConversionTime::Micros8244;
-    ina_config.shunt_conversion_time = crate::pwr_src::ina3221_drv::ConversionTime::Micros2116;
+    ina_config.avg_mode = crate::pwr_src::ina3221_drv::AvgMode::Sample256;
+    ina_config.bus_conversion_time = crate::pwr_src::ina3221_drv::ConversionTime::Micros4156;
+    ina_config.shunt_conversion_time = crate::pwr_src::ina3221_drv::ConversionTime::Micros1100;
 
     let cycle_duration = ina_config.calculate_cycle_time();
     // Reading every 5th ina cycle
     let mut ticker = Ticker::every(cycle_duration * 5);
-    info!("Calculated ina cycle duration = {}", cycle_duration);
+    info!("Calculated ina cycle duration: {}ms", cycle_duration.as_millis());
 
     expect!(ina.write_conf(ina_config).await, "could not write ina config");
 
