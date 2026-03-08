@@ -41,12 +41,12 @@ impl Resolution {
         } << 5);
     }
 }
-pub enum Addr0State {
+pub enum A0 {
     Floating,
     High,
     Low,
 }
-impl Addr0State {
+impl A0 {
     pub fn get_addr(&self) -> u8 {
         match self {
             Self::Floating => 0b1001001,
@@ -59,14 +59,14 @@ impl Addr0State {
 pub struct Tmp100<'a, I2C: I2c + ErrorType> {
     interface: &'a Mutex<ThreadModeRawMutex, I2C>,
     resolution: Resolution,
-    addr_state: Addr0State,
+    addr_state: A0,
 }
 
 impl<'a, I2C: I2c + ErrorType> Tmp100<'a, I2C> {
     pub async fn new(
         interface: &'a Mutex<ThreadModeRawMutex, I2C>,
         resolution: Resolution,
-        addr_state: Addr0State,
+        addr_state: A0,
     ) -> Result<Self, I2C::Error> {
         let mut config_reg = 0;
         resolution.set_reg_bits(&mut config_reg);
