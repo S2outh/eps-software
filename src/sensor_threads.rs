@@ -30,19 +30,19 @@ pub async fn ina_thread(
 
     let cycle_duration = ina_config.calculate_cycle_time();
     // Reading every 5th ina cycle
-    let mut ticker = Ticker::every(cycle_duration * 5);
+    let mut ticker = Ticker::every(cycle_duration);
     info!("Calculated ina cycle duration: {}ms", cycle_duration.as_millis());
 
     expect!(ina.write_conf(ina_config).await, "could not write ina config");
 
     loop {
-        send_voltage!(VoltageRegisters::Channel1Bus, tm::AuxPowerVoltage);
+        send_voltage!(VoltageRegisters::Channel3Bus, tm::AuxPowerVoltage);
         send_voltage!(VoltageRegisters::Channel2Bus, tm::Bat1Voltage);
-        send_voltage!(VoltageRegisters::Channel3Bus, tm::Bat2Voltage);
+        send_voltage!(VoltageRegisters::Channel1Bus, tm::Bat2Voltage);
 
-        send_voltage!(VoltageRegisters::Channel1Shunt, tm::AuxPowerCurrent);
+        send_voltage!(VoltageRegisters::Channel3Shunt, tm::AuxPowerCurrent);
         send_voltage!(VoltageRegisters::Channel2Shunt, tm::Bat1Current);
-        send_voltage!(VoltageRegisters::Channel3Shunt, tm::Bat2Current);
+        send_voltage!(VoltageRegisters::Channel1Shunt, tm::Bat2Current);
         ticker.next().await;
     }
 }
