@@ -2,7 +2,7 @@ use embassy_stm32::{i2c::Master, mode::Async};
 use embassy_sync::channel::DynamicSender;
 use embassy_time::{Duration, Ticker};
 use south_common::{tmtc_system::TelemetryDefinition, definitions::telemetry::eps as tm};
-use defmt::expect;
+use defmt::{expect, info};
 
 use crate::{EpsTMContainer, pwr_src::{ina3221_drv::{Ina, InaConfig, VoltageRegisters}, tmp100_drv::Tmp100}};
 
@@ -27,8 +27,11 @@ pub async fn ina_thread(
     ina_config.avg_mode = crate::pwr_src::ina3221_drv::AvgMode::Sample512;
     ina_config.bus_conversion_time = crate::pwr_src::ina3221_drv::ConversionTime::Micros8244;
     ina_config.shunt_conversion_time = crate::pwr_src::ina3221_drv::ConversionTime::Micros2116;
-    
-    let mut ticker = Ticker::every(ina_config.calculate_cycle_time());
+
+    let cycle_duration = ina_config.calculate_cycle_time();
+    // Reading every 5th ina cycle
+    let mut ticker = Ticker::every(cycle_duration * 5);
+    info!("Calculated ina cycle duration = {}", cycle_duration);
 
     expect!(ina.write_conf(ina_config).await, "could not write ina config");
 
