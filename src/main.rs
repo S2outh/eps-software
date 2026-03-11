@@ -8,13 +8,13 @@
 #![feature(generic_const_exprs)] // This feature is incomplete but beeing used in a benign context
 
 mod control_loop;
+mod sensor_threads;
 #[allow(dead_code)]
 mod pwr_src;
 
 use control_loop::ControlLoop;
 use pwr_src::{
-    aux_pwr::AuxPwr,
-    battery::{Battery, tmp100_drv::*},
+    tmp100_drv::*,
     d_flip_flop::DFlipFlop,
     sink_ctrl::SinkCtrl,
 };
@@ -34,7 +34,7 @@ use embassy_stm32::{
     mode::Async,
     peripherals::{self, FDCAN1, IWDG},
     rcc::{self, mux::Fdcansel},
-    time::khz,
+    time::mhz,
     wdg::IndependentWatchdog,
 };
 use embassy_sync::{
@@ -42,7 +42,7 @@ use embassy_sync::{
     channel::{Channel, Receiver, Sender},
     mutex::Mutex,
 };
-use embassy_time::{Timer};
+use embassy_time::Timer;
 use south_common::{
     tmtc_system::{TMValue, TelemetryContainer, TelemetryDefinition, telemetry_container},
     configs::can_config::CanPeriphConfig,
@@ -51,9 +51,7 @@ use south_common::{
 };
 use static_cell::StaticCell;
 
-use crate::{
-    pwr_src::{aux_pwr, battery},
-};
+use crate::pwr_src::ina3221_drv::Ina;
 
 use {defmt_rtt as _, panic_probe as _};
 
@@ -92,11 +90,6 @@ const WATCHDOG_PETTING_INTERVAL_US: u32 = WATCHDOG_TIMEOUT_US / 2;
 type EpsTMContainer = telemetry_container!(tm);
 
 // static concurrency sync management types
-// static ITW: StaticCell<Watch<ThreadModeRawMutex, i16, 1>> = StaticCell::new();
-// static B1W: StaticCell<Watch<ThreadModeRawMutex, i16, 1>> = StaticCell::new();
-// static B2W: StaticCell<Watch<ThreadModeRawMutex, i16, 1>> = StaticCell::new();
-// static APW: StaticCell<Watch<ThreadModeRawMutex, i16, 1>> = StaticCell::new();
-
 const TM_CHANNEL_BUF_SIZE: usize = 5;
 const CMD_CHANNEL_BUF_SIZE: usize = 5;
 static TMC: StaticCell<Channel<ThreadModeRawMutex, EpsTMContainer, TM_CHANNEL_BUF_SIZE>> =
@@ -122,23 +115,6 @@ async fn petter(mut watchdog: IndependentWatchdog<'static, IWDG>) {
         Timer::after_micros(WATCHDOG_PETTING_INTERVAL_US.into()).await;
     }
 }
-
-// Internal temperature tm task
-// #[embassy_executor::task]
-// pub async fn internal_temp_thread(
-//     tm_sender: DynamicSender<'static, EpsTMContainer>,
-//     mut temp_receiver: DynReceiver<'static, i16>,
-// ) {
-//     const INTERNAL_TEMP_LOOP_LEN: Duration = Duration::from_secs(2);
-//     let mut ticker = Ticker::every(INTERNAL_TEMP_LOOP_LEN);
-//     loop {
-//         let container =
-//             EpsTMContainer::new(&tm::InternalTemperature, &temp_receiver.get().await).unwrap();
-//         tm_sender.send(container).await;
-// 
-//         ticker.next().await;
-//     }
-// }
 
 // tm sending task
 #[embassy_executor::task]
@@ -192,19 +168,19 @@ async fn main(spawner: Spawner) {
     let mut watchdog = IndependentWatchdog::new(p.IWDG, WATCHDOG_TIMEOUT_US);
     watchdog.unleash();
 
-    // i2c for temperature sensors
+    // i2c setup
     let mut i2c_config = i2c::Config::default();
-    i2c_config.frequency = khz(400);
-    let temp_sensor_i2c = I2C.init(Mutex::new(I2c::new(
+    i2c_config.frequency = mhz(1);
+    let i2c = I2C.init(Mutex::new(I2c::new(
         p.I2C2, p.PA7, p.PA6, Irqs, p.DMA1_CH2, p.DMA1_CH3, i2c_config,
     )));
 
     // flip flop
     let source_flip_flop = DFlipFlop::new(
-        p.PB6, p.PC14, // bat 1
-        p.PB7, p.PB9, // bat 2
-        p.PB8, p.PC15, // aux pwr
-        p.PB5,  // clk
+        p.PB6, p.PC14,  // bat 1
+        p.PB7, p.PB9,   // bat 2
+        p.PB8, p.PC15,  // aux pwr
+        p.PB5,          // clk
     );
 
     // sink ctrl
@@ -222,35 +198,18 @@ async fn main(spawner: Spawner) {
     let tm_channel = TMC.init(Channel::new());
     let cmd_channel = CMDC.init(Channel::new());
 
-    // first battery
-    let bat_1_tmp = Tmp100::new(temp_sensor_i2c, Resolution::BITS12, Addr0State::Floating)
+    // first battery temp sensor
+    let bat_1_tmp = Tmp100::new(i2c, Resolution::BITS12, pwr_src::tmp100_drv::A0::Floating)
         .await
         .inspect_err(|e| error!("could not establish connection to bat 1 temp sensor: {}", e));
-    let bat_1 = Battery::new(
-        bat_1_tmp.ok(),
-        tm_channel.dyn_sender(),
-        &tm::Bat1Temperature,
-        &tm::Bat1Voltage,
-    )
-    .await;
 
-    // second battery
-    let bat_2_tmp = Tmp100::new(temp_sensor_i2c, Resolution::BITS12, Addr0State::Floating)
+    // second battery temp sensor
+    let bat_2_tmp = Tmp100::new(i2c, Resolution::BITS12, pwr_src::tmp100_drv::A0::Low)
         .await
         .inspect_err(|e| error!("could not establish connection to bat 2 temp sensor: {}", e));
-    let bat_2 = Battery::new(
-        bat_2_tmp.ok(),
-        tm_channel.dyn_sender(),
-        &tm::Bat2Temperature,
-        &tm::Bat2Voltage,
-    )
-    .await;
 
-    // aux power
-    let aux_pwr = AuxPwr::new(
-        tm_channel.dyn_sender(),
-    )
-    .await;
+    // ina
+    let ina = expect!(Ina::new(i2c, pwr_src::ina3221_drv::A0::Ground).await, "could not establish connection to ina");
 
     // debug leds not used at the moment
     let _led1 = Output::new(p.PB3, Level::Low, Speed::Low);
@@ -284,14 +243,16 @@ async fn main(spawner: Spawner) {
 
     spawner.must_spawn(control_loop::ctrl_thread(control_loop));
 
-    spawner.must_spawn(battery::battery_thread(bat_1));
-    spawner.must_spawn(battery::battery_thread(bat_2));
-    spawner.must_spawn(aux_pwr::aux_pwr_thread(aux_pwr));
+    if let Ok(tmp) = bat_1_tmp {
+        spawner.must_spawn(sensor_threads::bat_temp_thread(tm_channel.dyn_sender(), tmp, &tm::Bat1Temperature));
+    }
 
-    // spawner.must_spawn(internal_temp_thread(
-    //     tm_channel.dyn_sender(),
-    //     internal_temperature_watch.dyn_receiver().unwrap(),
-    // ));
+    if let Ok(tmp) = bat_2_tmp {
+        spawner.must_spawn(sensor_threads::bat_temp_thread(tm_channel.dyn_sender(), tmp, &tm::Bat2Temperature));
+    }
+
+    spawner.must_spawn(sensor_threads::ina_thread(tm_channel.dyn_sender(), ina));
+
     spawner.must_spawn(tm_thread(can_interface.writer(), tm_channel.receiver()));
     spawner.must_spawn(tc_thread(can_interface.reader(), cmd_channel.sender()));
 
