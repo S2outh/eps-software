@@ -32,7 +32,7 @@ use embassy_stm32::{
     gpio::{Level, Output, Speed},
     i2c::{self, I2c, Master},
     mode::Async,
-    peripherals::{self, FDCAN1, IWDG},
+    peripherals::{self, FDCAN2, IWDG},
     rcc::{self, mux::Fdcansel},
     time::mhz,
     wdg::IndependentWatchdog,
@@ -58,8 +58,12 @@ use {defmt_rtt as _, panic_probe as _};
 // bind interrupts
 bind_interrupts!(struct Irqs {
     I2C2_3 => i2c::EventInterruptHandler<peripherals::I2C2>, i2c::ErrorInterruptHandler<peripherals::I2C2>;
-    TIM16_FDCAN_IT0 => can::IT0InterruptHandler<FDCAN1>;
-    TIM17_FDCAN_IT1 => can::IT1InterruptHandler<FDCAN1>;
+
+    // TIM16_FDCAN_IT0 => can::IT0InterruptHandler<FDCAN1>;
+    // TIM17_FDCAN_IT1 => can::IT1InterruptHandler<FDCAN1>;
+    
+    TIM16_FDCAN_IT0 => can::IT0InterruptHandler<FDCAN2>;
+    TIM17_FDCAN_IT1 => can::IT1InterruptHandler<FDCAN2>;
 });
 
 /// config rcc for higher sysclock and fdcan periph clock to make sure
@@ -214,13 +218,15 @@ async fn main(spawner: Spawner) {
     // debug leds not used at the moment
     let _led1 = Output::new(p.PB3, Level::Low, Speed::Low);
 
-    // set can standby pin to low
-    let _can_standby = Output::new(p.PA10, Level::Low, Speed::Low);
-    //let _can_2_standby = Output::new(p.PB2, Level::High, Speed::Low);
-
     // -- CAN configuration
+
+    // can 1 configuration
+    // let mut can_configurator =
+    //     CanPeriphConfig::new(CanConfigurator::new(p.FDCAN1, p.PA11, p.PA12, Irqs));
+    
+    // can 2 configuration
     let mut can_configurator =
-        CanPeriphConfig::new(CanConfigurator::new(p.FDCAN1, p.PA11, p.PA12, Irqs));
+        CanPeriphConfig::new(CanConfigurator::new(p.FDCAN2, p.PB0, p.PB1, Irqs));
 
     can_configurator
         .add_receive_topic(internal_msgs::Telecommand.id())
@@ -230,6 +236,10 @@ async fn main(spawner: Spawner) {
         TX_BUF.init(TxFdBuf::<TX_BUF_SIZE>::new()),
         RX_BUF.init(RxFdBuf::<RX_BUF_SIZE>::new()),
     );
+
+    // set can standby pin to low
+    // let _can_1_standby = Output::new(p.PA10, Level::Low, Speed::Low);
+    let _can_2_standby = Output::new(p.PB2, Level::Low, Speed::Low);
 
     // Main control loop setup
     let control_loop = ControlLoop::spawn(
