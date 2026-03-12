@@ -12,14 +12,13 @@ mod sensor_threads;
 #[allow(dead_code)]
 mod pwr_src;
 
+use defmt::{error, info, expect};
 use control_loop::ControlLoop;
 use pwr_src::{
     tmp100_drv::*,
     d_flip_flop::DFlipFlop,
     sink_ctrl::SinkCtrl,
 };
-
-use defmt::*;
 
 use embassy_executor::Spawner;
 use embassy_stm32::{
@@ -44,7 +43,7 @@ use embassy_sync::{
 };
 use embassy_time::Timer;
 use south_common::{
-    tmtc_system::{TMValue, TelemetryContainer, TelemetryDefinition, telemetry_container},
+    tmtc_system::{TMValue, TelemetryDefinition, fd_compat_telemetry_container},
     configs::can_config::CanPeriphConfig,
     definitions::internal_msgs,
     definitions::telemetry::eps as tm, types::Telecommand,
@@ -91,7 +90,7 @@ const WATCHDOG_TIMEOUT_US: u32 = 300_000;
 const WATCHDOG_PETTING_INTERVAL_US: u32 = WATCHDOG_TIMEOUT_US / 2;
 
 // TM container
-type EpsTMContainer = telemetry_container!(tm);
+type EpsTMContainer = fd_compat_telemetry_container!(tm);
 
 // static concurrency sync management types
 const TM_CHANNEL_BUF_SIZE: usize = 5;
@@ -128,7 +127,7 @@ pub async fn tm_thread(
 ) {
     loop {
         let container = tm_channel.receive().await;
-        match FdFrame::new_standard(container.id(), container.bytes()) {
+        match FdFrame::new_standard(container.id(), container.fd_bytes()) {
             Ok(frame) => can_sender.write(frame).await,
             Err(e) => error!("error constructing can message: {}", e),
         }
