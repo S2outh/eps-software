@@ -1,22 +1,28 @@
-use embassy_futures::select::{Either, select};
+use embassy_futures::select::{Either3, select3};
+use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::channel::{DynamicReceiver, DynamicSender};
-use embassy_time::{Duration, Instant, Timer};
+use embassy_sync::signal::Signal;
+use embassy_time::{Duration, Instant, Ticker, Timer};
 use south_common::definitions::telemetry::eps as tm;
 use south_common::types::Telecommand;
 
 use crate::EpsTMContainer;
-use crate::pwr_src::d_flip_flop::{DFlipFlop, FlipFlopInput};
+use crate::pwr_src::d_flip_flop::DFlipFlop;
 use crate::pwr_src::sink_ctrl::SinkCtrl;
-use south_common::types::eps::{EPSCommand, SinkEnabled, SourceEnabled, Sink};
+use south_common::types::eps::{EPSCommand, FlipFlopInput, Sink, SinkEnabled, SourceEnabled};
 
 const CTRL_LOOP_TM_INTERVAL: Duration = Duration::from_millis(500);
+pub static SENSOR_CRITICAL: Signal<ThreadModeRawMutex, CriticalState> = Signal::new();
+
+pub enum CriticalState {
+    Temperature(FlipFlopInput),
+    UnderVoltage(FlipFlopInput),
+}
 
 // control loop task
 #[embassy_executor::task]
-pub async fn ctrl_thread(mut control_loop: ControlLoop<'static>) {
-    loop {
-        control_loop.run().await;
-    }
+pub async fn ctrl_thread(mut control_loop: ControlLoop<'static>) -> ! {
+    control_loop.run().await
 }
 
 pub struct ControlLoop<'d> {
@@ -57,19 +63,33 @@ impl<'d> ControlLoop<'d> {
         }
     }
 
-    async fn handle_cmd(&mut self) {
-        let Telecommand::EPS(telecommand) = self.cmd_receiver.receive().await else {
+    async fn handle_cmd(&mut self, cmd: Telecommand) {
+        let Telecommand::EPS(telecommand) = cmd else {
             return;
         };
         match telecommand {
-            EPSCommand::SetSource(state, time) => {
-                let old_state = self.source_flip_flop.get_state();
-                self.source_flip_flop.set(state).await;
+            EPSCommand::EnableSource(source, time) => {
+                if self.source_flip_flop.is_enabled(source) {
+                    return;
+                }
+                self.source_flip_flop.set(source).await;
                 if let Some(time) = time {
                     // this is blocking and prevents tc during timeout.
                     // might be good to fix in the future
                     Timer::after_secs(time as u64).await;
-                    self.source_flip_flop.set(old_state).await;
+                    self.source_flip_flop.reset(source).await;
+                }
+            }
+            EPSCommand::DisableSource(source, time) => {
+                if !self.source_flip_flop.is_enabled(source) {
+                    return;
+                }
+                self.source_flip_flop.reset(source).await;
+                if let Some(time) = time {
+                    // this is blocking and prevents tc during timeout.
+                    // might be good to fix in the future
+                    Timer::after_secs(time as u64).await;
+                    self.source_flip_flop.set(source).await;
                 }
             }
             EPSCommand::EnableSink(sink, time) => {
@@ -151,13 +171,25 @@ impl<'d> ControlLoop<'d> {
         let container = EpsTMContainer::new(&tm::SinkEnabled, &sink_bitmap.bits()).unwrap();
         self.tm_sender.send(container).await;
     }
-    pub async fn run(&mut self) {
-        if let Either::First(_) = select(
-            Timer::at(self.next_tm),
-            self.handle_cmd()
-        ).await {
-            self.send_state().await;
-            self.next_tm += CTRL_LOOP_TM_INTERVAL;
+    async fn critical(&mut self, state: CriticalState) {
+        match state {
+            CriticalState::Temperature(source) => self.source_flip_flop.reset(source).await,
+            CriticalState::UnderVoltage(source) => self.source_flip_flop.reset(source).await,
+        }
+    }
+    pub async fn run(&mut self) -> ! {
+        let mut tm_ticker = Ticker::every(CTRL_LOOP_TM_INTERVAL);
+
+        loop {
+            match select3(
+                tm_ticker.next(),
+                self.cmd_receiver.receive(),
+                SENSOR_CRITICAL.wait(),
+            ).await {
+                Either3::First(_) => self.send_state().await,
+                Either3::Second(cmd) => self.handle_cmd(cmd).await,
+                Either3::Third(state) => self.critical(state).await,
+            }
         }
     }
 }

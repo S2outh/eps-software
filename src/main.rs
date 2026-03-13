@@ -22,19 +22,10 @@ use pwr_src::{
 
 use embassy_executor::Spawner;
 use embassy_stm32::{
-    Config,
-    bind_interrupts,
-    can::{
+    Config, bind_interrupts, can::{
         self, BufferedFdCanReceiver, BufferedFdCanSender, CanConfigurator, RxFdBuf, TxFdBuf,
         frame::FdFrame,
-    },
-    gpio::{Level, Output, Speed},
-    i2c::{self, I2c, Master},
-    mode::Async,
-    peripherals::{self, FDCAN2, IWDG},
-    rcc::{self, mux::Fdcansel},
-    time::mhz,
-    wdg::IndependentWatchdog,
+    }, exti::{self, ExtiInput}, gpio::{Level, Output, Pull, Speed}, i2c::{self, I2c, Master}, interrupt, mode::Async, peripherals::{self, FDCAN2, IWDG}, rcc::{self, mux::Fdcansel}, time::mhz, wdg::IndependentWatchdog
 };
 use embassy_sync::{
     blocking_mutex::raw::ThreadModeRawMutex,
@@ -43,10 +34,7 @@ use embassy_sync::{
 };
 use embassy_time::Timer;
 use south_common::{
-    tmtc_system::{TMValue, TelemetryDefinition, fd_compat_telemetry_container},
-    configs::can_config::CanPeriphConfig,
-    definitions::internal_msgs,
-    definitions::telemetry::eps as tm, types::Telecommand,
+    configs::can_config::CanPeriphConfig, definitions::{internal_msgs, telemetry::eps as tm}, tmtc_system::{TMValue, TelemetryDefinition, fd_compat_telemetry_container}, types::{Telecommand, eps::FlipFlopInput}
 };
 use static_cell::StaticCell;
 
@@ -57,6 +45,8 @@ use {defmt_rtt as _, panic_probe as _};
 // bind interrupts
 bind_interrupts!(struct Irqs {
     I2C2_3 => i2c::EventInterruptHandler<peripherals::I2C2>, i2c::ErrorInterruptHandler<peripherals::I2C2>;
+
+    EXTI4_15 => exti::InterruptHandler<interrupt::typelevel::EXTI4_15>;
 
     // TIM16_FDCAN_IT0 => can::IT0InterruptHandler<FDCAN1>;
     // TIM17_FDCAN_IT1 => can::IT1InterruptHandler<FDCAN1>;
@@ -171,6 +161,10 @@ async fn main(spawner: Spawner) {
     let mut watchdog = IndependentWatchdog::new(p.IWDG, WATCHDOG_TIMEOUT_US);
     watchdog.unleash();
 
+    // remove before flight pin
+    let mut safety_off = ExtiInput::new(p.PB4, p.EXTI4, Pull::None, Irqs);
+    safety_off.wait_for_high().await;
+
     // i2c setup
     let mut i2c_config = i2c::Config::default();
     i2c_config.frequency = mhz(1);
@@ -253,11 +247,11 @@ async fn main(spawner: Spawner) {
     spawner.must_spawn(control_loop::ctrl_thread(control_loop));
 
     if let Ok(tmp) = bat_1_tmp {
-        spawner.must_spawn(sensor_threads::bat_temp_thread(tm_channel.dyn_sender(), tmp, &tm::Bat1Temperature));
+        spawner.must_spawn(sensor_threads::bat_temp_thread(tm_channel.dyn_sender(), tmp, &tm::Bat1Temperature, FlipFlopInput::Bat1));
     }
 
     if let Ok(tmp) = bat_2_tmp {
-        spawner.must_spawn(sensor_threads::bat_temp_thread(tm_channel.dyn_sender(), tmp, &tm::Bat2Temperature));
+        spawner.must_spawn(sensor_threads::bat_temp_thread(tm_channel.dyn_sender(), tmp, &tm::Bat2Temperature, FlipFlopInput::Bat2));
     }
 
     spawner.must_spawn(sensor_threads::ina_thread(tm_channel.dyn_sender(), ina));
