@@ -1,7 +1,7 @@
 use embassy_stm32::{i2c::Master, mode::Async};
 use embassy_sync::channel::DynamicSender;
 use embassy_time::{Duration, Ticker};
-use south_common::{definitions::telemetry::eps as tm, tmtc_system::TelemetryDefinition, types::eps::FlipFlopInput};
+use south_common::{definitions::telemetry::eps as tm, chell::ChellDefinition, types::eps::FlipFlopInput};
 use defmt::{expect, info};
 
 use crate::{EpsTMContainer, control_loop::{self, CriticalState}, pwr_src::{ina3221_drv::{Ina, InaConfig, VoltageRegisters}, tmp100_drv::Tmp100}};
@@ -62,7 +62,7 @@ pub async fn ina_thread(
 pub async fn bat_temp_thread(
     tm_sender: DynamicSender<'static, EpsTMContainer>,
     mut tmp: Tmp100<'static, I2c>,
-    topic: &'static dyn TelemetryDefinition,
+    topic: &'static dyn ChellDefinition,
     source: FlipFlopInput,
 ) {
     const TEMP_LOOP_LEN: Duration = Duration::from_secs(2);

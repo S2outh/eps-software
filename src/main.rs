@@ -34,7 +34,7 @@ use embassy_sync::{
 };
 use embassy_time::Timer;
 use south_common::{
-    configs::can_config::CanPeriphConfig, definitions::{internal_msgs, telemetry::eps as tm}, tmtc_system::{TMValue, TelemetryDefinition, fd_compat_telemetry_container}, types::{Telecommand, eps::FlipFlopInput}
+    configs::can_config::CanPeriphConfig, definitions::{internal_msgs, telemetry::eps as tm}, chell::{ChellValue, ChellDefinition, fd_compat_chell_container}, types::{Telecommand, eps::FlipFlopInput}
 };
 use static_cell::StaticCell;
 
@@ -80,7 +80,7 @@ const WATCHDOG_TIMEOUT_US: u32 = 300_000;
 const WATCHDOG_PETTING_INTERVAL_US: u32 = WATCHDOG_TIMEOUT_US / 2;
 
 // TM container
-type EpsTMContainer = fd_compat_telemetry_container!(tm);
+type EpsTMContainer = fd_compat_chell_container!(tm);
 
 // static concurrency sync management types
 const TM_CHANNEL_BUF_SIZE: usize = 5;
