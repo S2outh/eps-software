@@ -12,6 +12,7 @@ mod sensor_threads;
 #[allow(dead_code)]
 mod pwr_src;
 
+use defmt::{error, info, expect};
 use control_loop::ControlLoop;
 use pwr_src::{
     tmp100_drv::*,
@@ -19,23 +20,12 @@ use pwr_src::{
     sink_ctrl::SinkCtrl,
 };
 
-use defmt::*;
-
 use embassy_executor::Spawner;
 use embassy_stm32::{
-    Config,
-    bind_interrupts,
-    can::{
+    Config, bind_interrupts, can::{
         self, BufferedFdCanReceiver, BufferedFdCanSender, CanConfigurator, RxFdBuf, TxFdBuf,
         frame::FdFrame,
-    },
-    gpio::{Level, Output, Speed},
-    i2c::{self, I2c, Master},
-    mode::Async,
-    peripherals::{self, FDCAN1, IWDG},
-    rcc::{self, mux::Fdcansel},
-    time::mhz,
-    wdg::IndependentWatchdog,
+    }, exti::{self, ExtiInput}, gpio::{Level, Output, Pull, Speed}, i2c::{self, I2c, Master}, interrupt, mode::Async, peripherals::{self, FDCAN1, IWDG}, rcc::{self, mux::Fdcansel}, time::mhz, wdg::IndependentWatchdog
 };
 use embassy_sync::{
     blocking_mutex::raw::ThreadModeRawMutex,
@@ -44,10 +34,7 @@ use embassy_sync::{
 };
 use embassy_time::Timer;
 use south_common::{
-    tmtc_system::{TMValue, TelemetryContainer, TelemetryDefinition, telemetry_container},
-    configs::can_config::CanPeriphConfig,
-    definitions::internal_msgs,
-    definitions::telemetry::eps as tm, types::Telecommand,
+    configs::can_config::CanPeriphConfig, definitions::{internal_msgs, telemetry::eps as tm}, chell::{ChellValue, ChellDefinition, fd_compat_chell_container}, types::{Telecommand, eps::FlipFlopInput}
 };
 use static_cell::StaticCell;
 
@@ -58,8 +45,14 @@ use {defmt_rtt as _, panic_probe as _};
 // bind interrupts
 bind_interrupts!(struct Irqs {
     I2C2_3 => i2c::EventInterruptHandler<peripherals::I2C2>, i2c::ErrorInterruptHandler<peripherals::I2C2>;
+
+    EXTI4_15 => exti::InterruptHandler<interrupt::typelevel::EXTI4_15>;
+
     TIM16_FDCAN_IT0 => can::IT0InterruptHandler<FDCAN1>;
     TIM17_FDCAN_IT1 => can::IT1InterruptHandler<FDCAN1>;
+    
+    // TIM16_FDCAN_IT0 => can::IT0InterruptHandler<FDCAN2>;
+    // TIM17_FDCAN_IT1 => can::IT1InterruptHandler<FDCAN2>;
 });
 
 /// config rcc for higher sysclock and fdcan periph clock to make sure
@@ -87,7 +80,7 @@ const WATCHDOG_TIMEOUT_US: u32 = 300_000;
 const WATCHDOG_PETTING_INTERVAL_US: u32 = WATCHDOG_TIMEOUT_US / 2;
 
 // TM container
-type EpsTMContainer = telemetry_container!(tm);
+type EpsTMContainer = fd_compat_chell_container!(tm);
 
 // static concurrency sync management types
 const TM_CHANNEL_BUF_SIZE: usize = 5;
@@ -124,7 +117,7 @@ pub async fn tm_thread(
 ) {
     loop {
         let container = tm_channel.receive().await;
-        match FdFrame::new_standard(container.id(), container.bytes()) {
+        match FdFrame::new_standard(container.id(), container.fd_bytes()) {
             Ok(frame) => can_sender.write(frame).await,
             Err(e) => error!("error constructing can message: {}", e),
         }
@@ -167,6 +160,10 @@ async fn main(spawner: Spawner) {
     // unleash independent watchdog
     let mut watchdog = IndependentWatchdog::new(p.IWDG, WATCHDOG_TIMEOUT_US);
     watchdog.unleash();
+
+    // remove before flight pin
+    let mut safety_off = ExtiInput::new(p.PB4, p.EXTI4, Pull::None, Irqs);
+    safety_off.wait_for_high().await;
 
     // i2c setup
     let mut i2c_config = i2c::Config::default();
@@ -214,13 +211,15 @@ async fn main(spawner: Spawner) {
     // debug leds not used at the moment
     let _led1 = Output::new(p.PB3, Level::Low, Speed::Low);
 
-    // set can standby pin to low
-    let _can_standby = Output::new(p.PA10, Level::Low, Speed::Low);
-    //let _can_2_standby = Output::new(p.PB2, Level::High, Speed::Low);
-
     // -- CAN configuration
+
+    // can 1 configuration
     let mut can_configurator =
         CanPeriphConfig::new(CanConfigurator::new(p.FDCAN1, p.PA11, p.PA12, Irqs));
+    
+    // can 2 configuration
+    // let mut can_configurator =
+    //     CanPeriphConfig::new(CanConfigurator::new(p.FDCAN2, p.PB0, p.PB1, Irqs));
 
     can_configurator
         .add_receive_topic(internal_msgs::Telecommand.id())
@@ -230,6 +229,10 @@ async fn main(spawner: Spawner) {
         TX_BUF.init(TxFdBuf::<TX_BUF_SIZE>::new()),
         RX_BUF.init(RxFdBuf::<RX_BUF_SIZE>::new()),
     );
+
+    // set can standby pin to low
+    let _can_1_standby = Output::new(p.PA10, Level::Low, Speed::Low);
+    // let _can_2_standby = Output::new(p.PB2, Level::Low, Speed::Low);
 
     // Main control loop setup
     let control_loop = ControlLoop::spawn(
@@ -244,11 +247,11 @@ async fn main(spawner: Spawner) {
     spawner.must_spawn(control_loop::ctrl_thread(control_loop));
 
     if let Ok(tmp) = bat_1_tmp {
-        spawner.must_spawn(sensor_threads::bat_temp_thread(tm_channel.dyn_sender(), tmp, &tm::Bat1Temperature));
+        spawner.must_spawn(sensor_threads::bat_temp_thread(tm_channel.dyn_sender(), tmp, &tm::Bat1Temperature, FlipFlopInput::Bat1));
     }
 
     if let Ok(tmp) = bat_2_tmp {
-        spawner.must_spawn(sensor_threads::bat_temp_thread(tm_channel.dyn_sender(), tmp, &tm::Bat2Temperature));
+        spawner.must_spawn(sensor_threads::bat_temp_thread(tm_channel.dyn_sender(), tmp, &tm::Bat2Temperature, FlipFlopInput::Bat2));
     }
 
     spawner.must_spawn(sensor_threads::ina_thread(tm_channel.dyn_sender(), ina));
