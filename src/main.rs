@@ -22,10 +22,11 @@ use pwr_src::{
 
 use embassy_executor::Spawner;
 use embassy_stm32::{
+    dma,
     Config, bind_interrupts, can::{
         self, BufferedFdCanReceiver, BufferedFdCanSender, CanConfigurator, RxFdBuf, TxFdBuf,
         frame::FdFrame,
-    }, exti::{self, ExtiInput}, gpio::{Level, Output, Pull, Speed}, i2c::{self, I2c, Master}, interrupt, mode::Async, peripherals::{self, FDCAN1, IWDG}, rcc::{self, mux::Fdcansel}, time::mhz, wdg::IndependentWatchdog
+    }, exti::{self, ExtiInput}, gpio::{Level, Output, Pull, Speed}, i2c::{self, I2c, Master}, interrupt, mode::Async, peripherals::{self, DMA1_CH2, DMA1_CH3, FDCAN1, IWDG}, rcc::{self, mux::Fdcansel}, time::mhz, wdg::IndependentWatchdog
 };
 use embassy_sync::{
     blocking_mutex::raw::ThreadModeRawMutex,
@@ -34,7 +35,7 @@ use embassy_sync::{
 };
 use embassy_time::Timer;
 use south_common::{
-    configs::can_config::CanPeriphConfig, definitions::{internal_msgs, telemetry::eps as tm}, chell::{ChellValue, ChellDefinition, fd_compat_chell_container}, types::{Telecommand, eps::FlipFlopInput}
+    configs::can_config::CanPeriphConfig, definitions::{internal_msgs, telemetry::eps as tm}, chell::{ChellValue, ChellDefinition, fd_compat_chell_union}, types::{Telecommand, eps::FlipFlopInput}
 };
 use static_cell::StaticCell;
 
@@ -45,6 +46,7 @@ use {defmt_rtt as _, panic_probe as _};
 // bind interrupts
 bind_interrupts!(struct Irqs {
     I2C2_3 => i2c::EventInterruptHandler<peripherals::I2C2>, i2c::ErrorInterruptHandler<peripherals::I2C2>;
+    DMA1_CHANNEL2_3 => dma::InterruptHandler<DMA1_CH2>, dma::InterruptHandler<DMA1_CH3>;
 
     EXTI4_15 => exti::InterruptHandler<interrupt::typelevel::EXTI4_15>;
 
@@ -80,7 +82,7 @@ const WATCHDOG_TIMEOUT_US: u32 = 300_000;
 const WATCHDOG_PETTING_INTERVAL_US: u32 = WATCHDOG_TIMEOUT_US / 2;
 
 // TM container
-type EpsTMContainer = fd_compat_chell_container!(tm);
+type EpsTMContainer = fd_compat_chell_union!(tm);
 
 // static concurrency sync management types
 const TM_CHANNEL_BUF_SIZE: usize = 5;
@@ -169,7 +171,7 @@ async fn main(spawner: Spawner) {
     let mut i2c_config = i2c::Config::default();
     i2c_config.frequency = mhz(1);
     let i2c = I2C.init(Mutex::new(I2c::new(
-        p.I2C2, p.PA7, p.PA6, Irqs, p.DMA1_CH2, p.DMA1_CH3, i2c_config,
+        p.I2C2, p.PA7, p.PA6, p.DMA1_CH2, p.DMA1_CH3, Irqs, i2c_config,
     )));
 
     // flip flop
@@ -188,7 +190,7 @@ async fn main(spawner: Spawner) {
         p.PA9, // rocketlst 2
         p.PA8, // SensorLower
         p.PA15,// RocketHD
-        p.PA4  // BackupSink
+        p.PA4  // Pyro
     );
 
     // TM channel setup
@@ -242,22 +244,22 @@ async fn main(spawner: Spawner) {
         tm_channel.dyn_sender(),
     );
 
-    spawner.must_spawn(petter(watchdog));
+    spawner.spawn(petter(watchdog).unwrap());
 
-    spawner.must_spawn(control_loop::ctrl_thread(control_loop));
+    spawner.spawn(control_loop::ctrl_thread(control_loop).unwrap());
 
     if let Ok(tmp) = bat_1_tmp {
-        spawner.must_spawn(sensor_threads::bat_temp_thread(tm_channel.dyn_sender(), tmp, &tm::Bat1Temperature, FlipFlopInput::Bat1));
+        spawner.spawn(sensor_threads::bat_temp_thread(tm_channel.dyn_sender(), tmp, &tm::Bat1Temperature, FlipFlopInput::Bat1).unwrap());
     }
 
     if let Ok(tmp) = bat_2_tmp {
-        spawner.must_spawn(sensor_threads::bat_temp_thread(tm_channel.dyn_sender(), tmp, &tm::Bat2Temperature, FlipFlopInput::Bat2));
+        spawner.spawn(sensor_threads::bat_temp_thread(tm_channel.dyn_sender(), tmp, &tm::Bat2Temperature, FlipFlopInput::Bat2).unwrap());
     }
 
-    spawner.must_spawn(sensor_threads::ina_thread(tm_channel.dyn_sender(), ina));
+    spawner.spawn(sensor_threads::ina_thread(tm_channel.dyn_sender(), ina).unwrap());
 
-    spawner.must_spawn(tm_thread(can_interface.writer(), tm_channel.receiver()));
-    spawner.must_spawn(tc_thread(can_interface.reader(), cmd_channel.sender()));
+    spawner.spawn(tm_thread(can_interface.writer(), tm_channel.receiver()).unwrap());
+    spawner.spawn(tc_thread(can_interface.reader(), cmd_channel.sender()).unwrap());
 
     // wait until all other threads finished (never)
     core::future::pending::<()>().await;
