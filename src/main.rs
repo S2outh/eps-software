@@ -12,6 +12,7 @@ mod sensor_threads;
 #[allow(dead_code)]
 mod pwr_src;
 
+use cortex_m::peripheral::SCB;
 use defmt::{error, info, expect};
 use control_loop::ControlLoop;
 use pwr_src::{
@@ -111,6 +112,13 @@ async fn petter(mut watchdog: IndependentWatchdog<'static, IWDG>) {
     }
 }
 
+// Kill eps if remove before flight is put back in
+#[embassy_executor::task]
+async fn safety(mut safety_off: ExtiInput<'static, Async>) {
+    safety_off.wait_for_low().await;
+    SCB::sys_reset();
+}
+
 // tm sending task
 #[embassy_executor::task]
 pub async fn tm_thread(
@@ -159,13 +167,13 @@ async fn main(spawner: Spawner) {
         FW_HASH
     );
 
-    // unleash independent watchdog
-    let mut watchdog = IndependentWatchdog::new(p.IWDG, WATCHDOG_TIMEOUT_US);
-    watchdog.unleash();
-
     // remove before flight pin
     let mut safety_off = ExtiInput::new(p.PB4, p.EXTI4, Pull::None, Irqs);
     safety_off.wait_for_high().await;
+
+    // unleash independent watchdog
+    let mut watchdog = IndependentWatchdog::new(p.IWDG, WATCHDOG_TIMEOUT_US);
+    watchdog.unleash();
 
     // i2c setup
     let mut i2c_config = i2c::Config::default();
@@ -245,6 +253,7 @@ async fn main(spawner: Spawner) {
     );
 
     spawner.spawn(petter(watchdog).unwrap());
+    spawner.spawn(safety(safety_off).unwrap());
 
     spawner.spawn(control_loop::ctrl_thread(control_loop).unwrap());
 
