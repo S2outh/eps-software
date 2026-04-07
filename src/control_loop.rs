@@ -2,7 +2,7 @@ use embassy_futures::select::{Either3, select3};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::channel::{DynamicReceiver, DynamicSender};
 use embassy_sync::signal::Signal;
-use embassy_time::{Duration, Instant, Ticker, Timer};
+use embassy_time::{Duration, Ticker, Timer};
 use south_common::definitions::telemetry::eps as tm;
 use south_common::types::Telecommand;
 
@@ -28,7 +28,6 @@ pub async fn ctrl_thread(mut control_loop: ControlLoop<'static>) -> ! {
 pub struct ControlLoop<'d> {
     source_flip_flop: DFlipFlop<'d>,
     sink_ctrl: SinkCtrl<'d>,
-    next_tm: Instant,
     cmd_receiver: DynamicReceiver<'d, Telecommand>,
     tm_sender: DynamicSender<'d, EpsTMContainer>,
 }
@@ -57,7 +56,6 @@ impl<'d> ControlLoop<'d> {
         Self {
             source_flip_flop,
             sink_ctrl,
-            next_tm: Instant::now(),
             cmd_receiver,
             tm_sender,
         }
@@ -119,8 +117,6 @@ impl<'d> ControlLoop<'d> {
         }
     }
     async fn send_state(&mut self) {
-        Timer::at(self.next_tm).await;
-        
         let mut source_bitmap = SourceEnabled::empty();
         source_bitmap.set(
             SourceEnabled::BAT_1,
