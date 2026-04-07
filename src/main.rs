@@ -138,7 +138,7 @@ pub async fn tm_thread(
 #[embassy_executor::task]
 pub async fn tc_thread(
     can_receiver: BufferedFdCanReceiver,
-    tc_channel: Sender<'static, ThreadModeRawMutex, Telecommand, TM_CHANNEL_BUF_SIZE>,
+    tc_channel: Sender<'static, ThreadModeRawMutex, Telecommand, CMD_CHANNEL_BUF_SIZE>,
 ) {
     loop {
         match can_receiver.receive().await {
