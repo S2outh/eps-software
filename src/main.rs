@@ -112,6 +112,12 @@ async fn petter(mut watchdog: IndependentWatchdog<'static, IWDG>) {
     }
 }
 
+// control loop task
+#[embassy_executor::task]
+pub async fn ctrl_thread(mut control_loop: ControlLoop<'static>) -> ! {
+    control_loop.run().await
+}
+
 // Kill eps if remove before flight is put back in
 #[embassy_executor::task]
 async fn safety(mut safety_off: ExtiInput<'static, Async>) {
@@ -255,7 +261,7 @@ async fn main(spawner: Spawner) {
     spawner.spawn(petter(watchdog).unwrap());
     spawner.spawn(safety(safety_off).unwrap());
 
-    spawner.spawn(control_loop::ctrl_thread(control_loop).unwrap());
+    spawner.spawn(ctrl_thread(control_loop).unwrap());
 
     if let Ok(tmp) = bat_1_tmp {
         spawner.spawn(sensor_threads::bat_temp_thread(tm_channel.dyn_sender(), tmp, &tm::Bat1Temperature, FlipFlopInput::Bat1).unwrap());

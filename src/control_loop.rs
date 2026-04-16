@@ -11,18 +11,11 @@ use crate::pwr_src::d_flip_flop::DFlipFlop;
 use crate::pwr_src::sink_ctrl::SinkCtrl;
 use south_common::types::eps::{EPSCommand, FlipFlopInput, Sink, SinkEnabled, SourceEnabled};
 
-const CTRL_LOOP_TM_INTERVAL: Duration = Duration::from_millis(500);
 pub static SENSOR_CRITICAL: Signal<ThreadModeRawMutex, CriticalState> = Signal::new();
 
 pub enum CriticalState {
     Temperature(FlipFlopInput),
     UnderVoltage(FlipFlopInput),
-}
-
-// control loop task
-#[embassy_executor::task]
-pub async fn ctrl_thread(mut control_loop: ControlLoop<'static>) -> ! {
-    control_loop.run().await
 }
 
 pub struct ControlLoop<'d> {
@@ -174,6 +167,7 @@ impl<'d> ControlLoop<'d> {
         }
     }
     pub async fn run(&mut self) -> ! {
+        const CTRL_LOOP_TM_INTERVAL: Duration = Duration::from_millis(500);
         let mut tm_ticker = Ticker::every(CTRL_LOOP_TM_INTERVAL);
 
         loop {
