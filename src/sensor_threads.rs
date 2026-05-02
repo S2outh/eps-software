@@ -1,23 +1,28 @@
-use embassy_stm32::{i2c::Master, mode::Async};
-use embassy_sync::channel::DynamicSender;
-use embassy_time::{Duration, Ticker};
-use south_common::{definitions::telemetry::eps as tm, chell::ChellDefinition, types::eps::FlipFlopInput};
 use defmt::{expect, info};
+use embassy_stm32::{i2c::Master, mode::Async};
+use embassy_time::{Duration, Ticker};
+use south_common::{
+    chell::ChellDefinition, definitions::telemetry::eps as tm, types::eps::FlipFlopInput,
+};
 
-use crate::{EpsTMContainer, control_loop::{self, CriticalState}, pwr_src::{ina3221_drv::{Ina, InaConfig, VoltageRegisters}, tmp100_drv::Tmp100}};
+use crate::{
+    EpsChellUnion, EpsTMSender,
+    control_loop::{self, CriticalState},
+    pwr_src::{
+        ina3221_drv::{Ina, InaConfig, VoltageRegisters},
+        tmp100_drv::Tmp100,
+    },
+};
 
 type I2c = embassy_stm32::i2c::I2c<'static, Async, Master>;
 
 #[embassy_executor::task]
-pub async fn ina_thread(
-    tm_sender: DynamicSender<'static, EpsTMContainer>,
-    mut ina: Ina<'static, I2c>
-) {
+pub async fn ina_thread(tm_sender: EpsTMSender, mut ina: Ina<'static, I2c>) {
     macro_rules! send_voltage {
         ($channel:expr, $tm_def:path $(, $additional_fn:expr)?) => {
             if let Ok(value) = ina.read_voltage_reg($channel).await {
                 $($additional_fn(value);)?
-                let container = EpsTMContainer::new(&$tm_def, &value).unwrap();
+                let container = EpsChellUnion::new(&$tm_def, &value).unwrap();
                 tm_sender.send(container).await;
             }
         };
@@ -38,9 +43,15 @@ pub async fn ina_thread(
 
     let cycle_duration = ina_config.calculate_cycle_time();
     let mut ticker = Ticker::every(cycle_duration);
-    info!("Calculated ina cycle duration: {}ms", cycle_duration.as_millis());
+    info!(
+        "Calculated ina cycle duration: {}ms",
+        cycle_duration.as_millis()
+    );
 
-    expect!(ina.write_conf(ina_config).await, "could not write ina config");
+    expect!(
+        ina.write_conf(ina_config).await,
+        "could not write ina config"
+    );
 
     let bat_1_under_voltage_check = |v| check_under_voltage(v, FlipFlopInput::Bat1);
     let bat_2_under_voltage_check = |v| check_under_voltage(v, FlipFlopInput::Bat2);
@@ -49,8 +60,16 @@ pub async fn ina_thread(
         ticker.next().await;
 
         send_voltage!(VoltageRegisters::Channel3Bus, tm::AuxPowerVoltage);
-        send_voltage!(VoltageRegisters::Channel2Bus, tm::Bat1Voltage, bat_1_under_voltage_check);
-        send_voltage!(VoltageRegisters::Channel1Bus, tm::Bat2Voltage, bat_2_under_voltage_check);
+        send_voltage!(
+            VoltageRegisters::Channel2Bus,
+            tm::Bat1Voltage,
+            bat_1_under_voltage_check
+        );
+        send_voltage!(
+            VoltageRegisters::Channel1Bus,
+            tm::Bat2Voltage,
+            bat_2_under_voltage_check
+        );
 
         send_voltage!(VoltageRegisters::Channel3Shunt, tm::AuxPowerCurrent);
         send_voltage!(VoltageRegisters::Channel2Shunt, tm::Bat1Current);
@@ -60,7 +79,7 @@ pub async fn ina_thread(
 
 #[embassy_executor::task(pool_size = 2)]
 pub async fn bat_temp_thread(
-    tm_sender: DynamicSender<'static, EpsTMContainer>,
+    tm_sender: EpsTMSender,
     mut tmp: Tmp100<'static, I2c>,
     topic: &'static dyn ChellDefinition,
     source: FlipFlopInput,
@@ -73,7 +92,7 @@ pub async fn bat_temp_thread(
             if temperature / 10 >= CRITICAL_TEMPERATURE_C {
                 control_loop::SENSOR_CRITICAL.signal(CriticalState::Temperature(source));
             }
-            let container = EpsTMContainer::new(topic, &temperature).unwrap();
+            let container = EpsChellUnion::new(topic, &temperature).unwrap();
             tm_sender.send(container).await;
         }
         ticker.next().await;

@@ -39,9 +39,9 @@ pub enum Error<I2CError> {
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum A0 {
     Ground = 0b1000000,
-    VS     = 0b1000001,
-    SDA    = 0b1000010,
-    SCL    = 0b1000011,
+    VS = 0b1000001,
+    SDA = 0b1000010,
+    SCL = 0b1000011,
 }
 
 // Registers
@@ -60,40 +60,40 @@ macro_rules! derive_reg {
 #[repr(u8)]
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 enum ConfigRegisters {
-    Configuration       = 0x00,
-    MaskEnable          = 0x0F,
+    Configuration = 0x00,
+    MaskEnable = 0x0F,
 }
 #[repr(u8)]
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum VoltageRegisters {
-    Channel1Shunt       = 0x01,
-    Channel1Bus         = 0x02,
-    Channel2Shunt       = 0x03,
-    Channel2Bus         = 0x04,
-    Channel3Shunt       = 0x05,
-    Channel3Bus         = 0x06,
+    Channel1Shunt = 0x01,
+    Channel1Bus = 0x02,
+    Channel2Shunt = 0x03,
+    Channel2Bus = 0x04,
+    Channel3Shunt = 0x05,
+    Channel3Bus = 0x06,
 }
 #[repr(u8)]
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum CWLimitRegisters {
     Channel1CriticalLim = 0x07,
-    Channel1WarningLim  = 0x08,
+    Channel1WarningLim = 0x08,
     Channel2CriticalLim = 0x09,
-    Channel2WarningLim  = 0x0A,
+    Channel2WarningLim = 0x0A,
     Channel3CriticalLim = 0x0B,
-    Channel3WarningLim  = 0x0C,
+    Channel3WarningLim = 0x0C,
 }
 #[repr(u8)]
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum PVLimitRegisters {
-    PowerValidUpperLim  = 0x10,
-    PowerValidLowerLim  = 0x11,
+    PowerValidUpperLim = 0x10,
+    PowerValidLowerLim = 0x11,
 }
 #[repr(u8)]
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum ShuntVoltageSumRegisters {
-    ShuntVoltageSum     = 0x0D,
-    ShuntVoltageSumLim  = 0x0E,
+    ShuntVoltageSum = 0x0D,
+    ShuntVoltageSumLim = 0x0E,
 }
 derive_reg!(ConfigRegisters);
 derive_reg!(VoltageRegisters);
@@ -113,26 +113,26 @@ bitflags! {
 #[repr(u8)]
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum AvgMode {
-    Sample1     = 0,
-    Sample4     = 1,
-    Sample16    = 2,
-    Sample64    = 3,
-    Sample128   = 4,
-    Sample256   = 5,
-    Sample512   = 6,
-    Sample1024  = 7,
+    Sample1 = 0,
+    Sample4 = 1,
+    Sample16 = 2,
+    Sample64 = 3,
+    Sample128 = 4,
+    Sample256 = 5,
+    Sample512 = 6,
+    Sample1024 = 7,
 }
 impl AvgMode {
     fn samples(&self) -> u32 {
         match self {
-            Self::Sample1     => 1,
-            Self::Sample4     => 4,
-            Self::Sample16    => 16,
-            Self::Sample64    => 64,
-            Self::Sample128   => 128,
-            Self::Sample256   => 256,
-            Self::Sample512   => 512,
-            Self::Sample1024  => 1024,
+            Self::Sample1 => 1,
+            Self::Sample4 => 4,
+            Self::Sample16 => 16,
+            Self::Sample64 => 64,
+            Self::Sample128 => 128,
+            Self::Sample256 => 256,
+            Self::Sample512 => 512,
+            Self::Sample1024 => 1024,
         }
     }
 }
@@ -140,27 +140,27 @@ impl AvgMode {
 #[repr(u8)]
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum ConversionTime {
-    Micros140   = 0,
-    Micros204   = 1,
-    Micros332   = 2,
-    Micros588   = 3,
-    Micros1100  = 4,
-    Micros2116  = 5,
-    Micros4156  = 6,
-    Micros8244  = 7,
+    Micros140 = 0,
+    Micros204 = 1,
+    Micros332 = 2,
+    Micros588 = 3,
+    Micros1100 = 4,
+    Micros2116 = 5,
+    Micros4156 = 6,
+    Micros8244 = 7,
 }
 
 impl ConversionTime {
     fn duration(&self) -> Duration {
         Duration::from_micros(match self {
-            Self::Micros140   => 140,
-            Self::Micros204   => 204,
-            Self::Micros332   => 332,
-            Self::Micros588   => 588,
-            Self::Micros1100  => 1100,
-            Self::Micros2116  => 2116,
-            Self::Micros4156  => 4156,
-            Self::Micros8244  => 8244,
+            Self::Micros140 => 140,
+            Self::Micros204 => 204,
+            Self::Micros332 => 332,
+            Self::Micros588 => 588,
+            Self::Micros1100 => 1100,
+            Self::Micros2116 => 2116,
+            Self::Micros4156 => 4156,
+            Self::Micros8244 => 8244,
         })
     }
 }
@@ -168,27 +168,27 @@ impl ConversionTime {
 #[repr(u8)]
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum OperatingMode {
-    PowerDown       = 0,
+    PowerDown = 0,
     ShuntSingleShot = 1,
-    BusSingleShot   = 2,
-    AllSingleShot   = 3,
+    BusSingleShot = 2,
+    AllSingleShot = 3,
     // PowerDown 2  = 4,
     ShuntContinuous = 5,
-    BusContinuous   = 6,
-    AllContinuous   = 7,
+    BusContinuous = 6,
+    AllContinuous = 7,
 }
 impl OperatingMode {
     fn bus_active(&self) -> bool {
-        matches!(self, Self::BusSingleShot) ||
-        matches!(self, Self::BusContinuous) ||
-        matches!(self, Self::AllSingleShot) ||
-        matches!(self, Self::AllContinuous)
+        matches!(self, Self::BusSingleShot)
+            || matches!(self, Self::BusContinuous)
+            || matches!(self, Self::AllSingleShot)
+            || matches!(self, Self::AllContinuous)
     }
     fn shunt_active(&self) -> bool {
-        matches!(self, Self::ShuntSingleShot) ||
-        matches!(self, Self::ShuntContinuous) ||
-        matches!(self, Self::AllSingleShot) ||
-        matches!(self, Self::AllContinuous)
+        matches!(self, Self::ShuntSingleShot)
+            || matches!(self, Self::ShuntContinuous)
+            || matches!(self, Self::AllSingleShot)
+            || matches!(self, Self::AllContinuous)
     }
 }
 
@@ -203,7 +203,7 @@ pub struct InaConfig {
 impl InaConfig {
     pub fn new() -> Self {
         // setup default options from the datasheet
-        Self { 
+        Self {
             reset: false,
             channels: Channel::all(),
             avg_mode: AvgMode::Sample1,
@@ -259,18 +259,21 @@ impl<'d, I2C: I2c + ErrorType> Ina<'d, I2C> {
         i2c: &'d Mutex<ThreadModeRawMutex, I2C>,
         i2c_addr: A0,
     ) -> Result<Self, Error<I2C::Error>> {
-        let mut ina = Self {
-            i2c,
-            i2c_addr,
-        };
+        let mut ina = Self { i2c, i2c_addr };
         ina.reset().await?;
         Ok(ina)
     }
 
-    async fn write_reg(&mut self, reg_addr: &dyn Register, data: u16) -> Result<(), Error<I2C::Error>> {
+    async fn write_reg(
+        &mut self,
+        reg_addr: &dyn Register,
+        data: u16,
+    ) -> Result<(), Error<I2C::Error>> {
         let data = data.to_be_bytes();
         let buf = [reg_addr.get_addr(), data[0], data[1]];
-        self.i2c.lock().await
+        self.i2c
+            .lock()
+            .await
             .write(self.i2c_addr as u8, &buf)
             .await
             .map_err(Error::IO)
@@ -278,8 +281,14 @@ impl<'d, I2C: I2c + ErrorType> Ina<'d, I2C> {
 
     async fn read_reg(&mut self, reg_addr: &dyn Register) -> Result<u16, Error<I2C::Error>> {
         let mut buf = [0u8; 2];
-        self.i2c.lock().await
-            .write_read(self.i2c_addr as u8, core::array::from_ref(&reg_addr.get_addr()), &mut buf)
+        self.i2c
+            .lock()
+            .await
+            .write_read(
+                self.i2c_addr as u8,
+                core::array::from_ref(&reg_addr.get_addr()),
+                &mut buf,
+            )
             .await
             .map_err(Error::IO)?;
 
@@ -288,34 +297,58 @@ impl<'d, I2C: I2c + ErrorType> Ina<'d, I2C> {
 
     // configuration
     pub async fn write_conf(&mut self, config: InaConfig) -> Result<(), Error<I2C::Error>> {
-        self.write_reg(&ConfigRegisters::Configuration, config.build()).await
+        self.write_reg(&ConfigRegisters::Configuration, config.build())
+            .await
     }
     pub async fn reset(&mut self) -> Result<(), Error<I2C::Error>> {
         self.write_conf(InaConfig::reset()).await
     }
-    pub async fn set_cw_limit(&mut self, register: CWLimitRegisters, voltage_uv: u32) -> Result<(), Error<I2C::Error>> {
+    pub async fn set_cw_limit(
+        &mut self,
+        register: CWLimitRegisters,
+        voltage_uv: u32,
+    ) -> Result<(), Error<I2C::Error>> {
         let value = (voltage_uv / 40) as u16; // LSB is 40 uV
         self.write_reg(&register, value << 3).await
     }
-    pub async fn set_pv_limit(&mut self, register: PVLimitRegisters, voltage_mv: i32) -> Result<(), Error<I2C::Error>> {
+    pub async fn set_pv_limit(
+        &mut self,
+        register: PVLimitRegisters,
+        voltage_mv: i32,
+    ) -> Result<(), Error<I2C::Error>> {
         let value = voltage_mv / 8; // LSB is 8 mV
         self.write_reg(&register, (value << 3) as u16).await
     }
-    pub async fn set_all_critical_limits(&mut self, voltage_uv: u32) -> Result<(), Error<I2C::Error>> {
-        self.set_cw_limit(CWLimitRegisters::Channel1CriticalLim, voltage_uv).await?;
-        self.set_cw_limit(CWLimitRegisters::Channel2CriticalLim, voltage_uv).await?;
-        self.set_cw_limit(CWLimitRegisters::Channel3CriticalLim, voltage_uv).await?;
+    pub async fn set_all_critical_limits(
+        &mut self,
+        voltage_uv: u32,
+    ) -> Result<(), Error<I2C::Error>> {
+        self.set_cw_limit(CWLimitRegisters::Channel1CriticalLim, voltage_uv)
+            .await?;
+        self.set_cw_limit(CWLimitRegisters::Channel2CriticalLim, voltage_uv)
+            .await?;
+        self.set_cw_limit(CWLimitRegisters::Channel3CriticalLim, voltage_uv)
+            .await?;
         Ok(())
     }
-    pub async fn set_all_warning_limits(&mut self, voltage_uv: u32) -> Result<(), Error<I2C::Error>> {
-        self.set_cw_limit(CWLimitRegisters::Channel1WarningLim, voltage_uv).await?;
-        self.set_cw_limit(CWLimitRegisters::Channel2WarningLim, voltage_uv).await?;
-        self.set_cw_limit(CWLimitRegisters::Channel3WarningLim, voltage_uv).await?;
+    pub async fn set_all_warning_limits(
+        &mut self,
+        voltage_uv: u32,
+    ) -> Result<(), Error<I2C::Error>> {
+        self.set_cw_limit(CWLimitRegisters::Channel1WarningLim, voltage_uv)
+            .await?;
+        self.set_cw_limit(CWLimitRegisters::Channel2WarningLim, voltage_uv)
+            .await?;
+        self.set_cw_limit(CWLimitRegisters::Channel3WarningLim, voltage_uv)
+            .await?;
         Ok(())
     }
 
     // read data
-    pub async fn read_voltage_reg(&mut self, register: VoltageRegisters) -> Result<i16, Error<I2C::Error>> {
+    pub async fn read_voltage_reg(
+        &mut self,
+        register: VoltageRegisters,
+    ) -> Result<i16, Error<I2C::Error>> {
         let data = self.read_reg(&register).await?;
         Ok(data as i16 >> 3)
     }

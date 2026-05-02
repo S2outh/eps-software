@@ -1,14 +1,12 @@
 use embassy_futures::select::{Either3, select3};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
-use embassy_sync::channel::{DynamicReceiver, DynamicSender};
 use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Ticker, Timer};
 use south_common::definitions::telemetry::eps as tm;
-use south_common::types::Telecommand;
 
-use crate::EpsTMContainer;
 use crate::pwr_src::d_flip_flop::DFlipFlop;
 use crate::pwr_src::sink_ctrl::SinkCtrl;
+use crate::{EpsChellUnion, EpsTCReceiver, EpsTMSender};
 use south_common::types::eps::{EPSCommand, FlipFlopInput, Sink, SinkEnabled, SourceEnabled};
 
 pub static SENSOR_CRITICAL: Signal<ThreadModeRawMutex, CriticalState> = Signal::new();
@@ -21,30 +19,16 @@ pub enum CriticalState {
 pub struct ControlLoop<'d> {
     source_flip_flop: DFlipFlop<'d>,
     sink_ctrl: SinkCtrl<'d>,
-    cmd_receiver: DynamicReceiver<'d, Telecommand>,
-    tm_sender: DynamicSender<'d, EpsTMContainer>,
+    cmd_receiver: EpsTCReceiver,
+    tm_sender: EpsTMSender,
 }
-
-// macro_rules! populate_bitmap {
-//     ($bm:ident, $(($field:ident, $fn:ident)),*) => {
-//         paste::paste!{
-//             let [<$bm:snake>] = $bm::empty();
-//             $(
-//                 [<$bm:snake>].set(
-//                     $bm::[<$field:snake:upper>],
-//                     $fn
-//                 );
-//             )*
-//         }
-//     };
-// }
 
 impl<'d> ControlLoop<'d> {
     pub fn spawn(
         source_flip_flop: DFlipFlop<'d>,
         sink_ctrl: SinkCtrl<'d>,
-        cmd_receiver: DynamicReceiver<'d, Telecommand>,
-        tm_sender: DynamicSender<'d, EpsTMContainer>,
+        cmd_receiver: EpsTCReceiver,
+        tm_sender: EpsTMSender,
     ) -> Self {
         Self {
             source_flip_flop,
@@ -54,10 +38,7 @@ impl<'d> ControlLoop<'d> {
         }
     }
 
-    async fn handle_cmd(&mut self, cmd: Telecommand) {
-        let Telecommand::EPS(telecommand) = cmd else {
-            return;
-        };
+    async fn handle_cmd(&mut self, telecommand: EPSCommand) {
         match telecommand {
             EPSCommand::EnableSource(source, time) => {
                 if self.source_flip_flop.is_enabled(source) {
@@ -110,55 +91,39 @@ impl<'d> ControlLoop<'d> {
         }
     }
     async fn send_state(&mut self) {
-        let mut source_bitmap = SourceEnabled::empty();
-        source_bitmap.set(
-            SourceEnabled::BAT_1,
-            self.source_flip_flop.is_enabled(FlipFlopInput::Bat1),
+        macro_rules! send_state_bitmap {
+            ($state: path, $source_ident: ident, $enum: path, $($field:ident),*) => { paste::paste! {
+                let mut bitmap = $state::empty();
+                $(
+                    bitmap.set(
+                        $state::$field,
+                        self.$source_ident.is_enabled($enum::[<$field:camel>])
+                    );
+                )*
+                let container = EpsChellUnion::new(&tm:: $state, &bitmap.bits()).unwrap();
+                self.tm_sender.send(container).await;
+            } };
+        }
+        send_state_bitmap!(
+            SourceEnabled,
+            source_flip_flop,
+            FlipFlopInput,
+            BAT_1,
+            BAT_2,
+            AUX_PWR
         );
-        source_bitmap.set(
-            SourceEnabled::BAT_2,
-            self.source_flip_flop.is_enabled(FlipFlopInput::Bat2),
+        send_state_bitmap!(
+            SinkEnabled,
+            sink_ctrl,
+            Sink,
+            CARRIER,
+            UMBILICAL,
+            ROCKET_LST_1,
+            ROCKET_LST_2,
+            SENSOR_LOWER,
+            ROCKET_H_D,
+            BACKUP_SINK
         );
-        source_bitmap.set(
-            SourceEnabled::AUX_PWR,
-            self.source_flip_flop.is_enabled(FlipFlopInput::AuxPwr),
-        );
-
-        let container = EpsTMContainer::new(&tm::SourceEnabled, &source_bitmap.bits()).unwrap();
-        self.tm_sender.send(container).await;
-
-        let mut sink_bitmap = SinkEnabled::empty();
-        sink_bitmap.set(
-            SinkEnabled::CARRIER,
-            self.sink_ctrl.is_enabled(Sink::Carrier),
-        );
-        sink_bitmap.set(
-            SinkEnabled::UMBILICAL,
-            self.sink_ctrl.is_enabled(Sink::Umbilical),
-        );
-        sink_bitmap.set(
-            SinkEnabled::ROCKET_LST_1,
-            self.sink_ctrl.is_enabled(Sink::RocketLst1),
-        );
-        sink_bitmap.set(
-            SinkEnabled::ROCKET_LST_2,
-            self.sink_ctrl.is_enabled(Sink::RocketLst2),
-        );
-        sink_bitmap.set(
-            SinkEnabled::SENSOR_LOWER,
-            self.sink_ctrl.is_enabled(Sink::SensorLower),
-        );
-        sink_bitmap.set(
-            SinkEnabled::ROCKET_HD,
-            self.sink_ctrl.is_enabled(Sink::RocketHD),
-        );
-        sink_bitmap.set(
-            SinkEnabled::BACKUP_SINK,
-            self.sink_ctrl.is_enabled(Sink::BackupSink),
-        );
-
-        let container = EpsTMContainer::new(&tm::SinkEnabled, &sink_bitmap.bits()).unwrap();
-        self.tm_sender.send(container).await;
     }
     async fn critical(&mut self, state: CriticalState) {
         match state {
@@ -175,7 +140,9 @@ impl<'d> ControlLoop<'d> {
                 tm_ticker.next(),
                 self.cmd_receiver.receive(),
                 SENSOR_CRITICAL.wait(),
-            ).await {
+            )
+            .await
+            {
                 Either3::First(_) => self.send_state().await,
                 Either3::Second(cmd) => self.handle_cmd(cmd).await,
                 Either3::Third(state) => self.critical(state).await,

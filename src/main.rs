@@ -8,35 +8,44 @@
 #![feature(generic_const_exprs)] // This feature is incomplete but beeing used in a benign context
 
 mod control_loop;
-mod sensor_threads;
 #[allow(dead_code)]
 mod pwr_src;
+mod sensor_threads;
 
-use cortex_m::peripheral::SCB;
-use defmt::{error, info, expect};
 use control_loop::ControlLoop;
-use pwr_src::{
-    tmp100_drv::*,
-    d_flip_flop::DFlipFlop,
-    sink_ctrl::SinkCtrl,
-};
+use cortex_m::peripheral::SCB;
+use defmt::{error, expect, info};
+use pwr_src::{d_flip_flop::DFlipFlop, sink_ctrl::SinkCtrl, tmp100_drv::*};
 
 use embassy_executor::Spawner;
 use embassy_stm32::{
+    Config, bind_interrupts,
+    can::{
+        self, CanConfigurator, RxFdBuf, TxFdBuf,
+    },
     dma,
-    Config, bind_interrupts, can::{
-        self, BufferedFdCanReceiver, BufferedFdCanSender, CanConfigurator, RxFdBuf, TxFdBuf,
-        frame::FdFrame,
-    }, exti::{self, ExtiInput}, gpio::{Level, Output, Pull, Speed}, i2c::{self, I2c, Master}, interrupt, mode::Async, peripherals::{self, DMA1_CH2, DMA1_CH3, FDCAN1, IWDG}, rcc::{self, mux::Fdcansel}, time::mhz, wdg::IndependentWatchdog
+    exti::{self, ExtiInput},
+    gpio::{Level, Output, Pull, Speed},
+    i2c::{self, I2c, Master},
+    interrupt,
+    mode::Async,
+    peripherals::{self, DMA1_CH2, DMA1_CH3, FDCAN1, IWDG},
+    rcc::{self, mux::Fdcansel},
+    time::mhz,
+    wdg::IndependentWatchdog,
 };
 use embassy_sync::{
     blocking_mutex::raw::ThreadModeRawMutex,
-    channel::{Channel, Receiver, Sender},
     mutex::Mutex,
 };
 use embassy_time::Timer;
 use south_common::{
-    configs::can_config::CanPeriphConfig, definitions::{internal_msgs, telemetry::eps as tm}, chell::{ChellValue, ChellDefinition, fd_compat_chell_union}, types::{Telecommand, eps::FlipFlopInput}
+    chell::ChellDefinition,
+    configs::can_config::CanPeriphConfig,
+    definitions::{internal_msgs, telemetry::eps as tm},
+    gen_obdh_types,
+    obdh::EmptyFunc,
+    types::eps::{EPSCommand, FlipFlopInput},
 };
 use static_cell::StaticCell;
 
@@ -53,7 +62,7 @@ bind_interrupts!(struct Irqs {
 
     TIM16_FDCAN_IT0 => can::IT0InterruptHandler<FDCAN1>;
     TIM17_FDCAN_IT1 => can::IT1InterruptHandler<FDCAN1>;
-    
+
     // TIM16_FDCAN_IT0 => can::IT0InterruptHandler<FDCAN2>;
     // TIM17_FDCAN_IT1 => can::IT1InterruptHandler<FDCAN2>;
 });
@@ -83,15 +92,10 @@ const WATCHDOG_TIMEOUT_US: u32 = 300_000;
 const WATCHDOG_PETTING_INTERVAL_US: u32 = WATCHDOG_TIMEOUT_US / 2;
 
 // TM container
-type EpsTMContainer = fd_compat_chell_union!(tm);
+gen_obdh_types!(Eps, tm, cmd => EPSCommand);
 
-// static concurrency sync management types
-const TM_CHANNEL_BUF_SIZE: usize = 5;
-const CMD_CHANNEL_BUF_SIZE: usize = 5;
-static TMC: StaticCell<Channel<ThreadModeRawMutex, EpsTMContainer, TM_CHANNEL_BUF_SIZE>> =
-    StaticCell::new();
-static CMDC: StaticCell<Channel<ThreadModeRawMutex, Telecommand, CMD_CHANNEL_BUF_SIZE>> =
-    StaticCell::new();
+// internal messaging channels
+static COM_CHANNELS: EpsComChannels = EpsComChannels::new(3);
 
 // static peripherals
 static I2C: StaticCell<Mutex<ThreadModeRawMutex, I2c<'static, Async, Master>>> = StaticCell::new();
@@ -125,36 +129,14 @@ async fn safety(mut safety_off: ExtiInput<'static, Async>) {
     SCB::sys_reset();
 }
 
-// tm sending task
 #[embassy_executor::task]
-pub async fn tm_thread(
-    mut can_sender: BufferedFdCanSender,
-    tm_channel: Receiver<'static, ThreadModeRawMutex, EpsTMContainer, TM_CHANNEL_BUF_SIZE>,
-) {
-    loop {
-        let container = tm_channel.receive().await;
-        match FdFrame::new_standard(container.id(), container.fd_bytes()) {
-            Ok(frame) => can_sender.write(frame).await,
-            Err(e) => error!("error constructing can message: {}", e),
-        }
-    }
+pub async fn can_receiver_task(mut can_receiver: EpsCanReceiver) -> ! {
+    can_receiver.run().await
 }
 
-// tc receiving task
 #[embassy_executor::task]
-pub async fn tc_thread(
-    can_receiver: BufferedFdCanReceiver,
-    tc_channel: Sender<'static, ThreadModeRawMutex, Telecommand, CMD_CHANNEL_BUF_SIZE>,
-) {
-    loop {
-        match can_receiver.receive().await {
-            Ok(envelope) => match Telecommand::read(envelope.frame.data()) {
-                Ok((_, cmd)) => tc_channel.send(cmd).await,
-                Err(_) => error!("error parsing tc"),
-            },
-            Err(e) => error!("error in frame! {}", e),
-        }
-    }
+pub async fn can_sender_task(mut can_sender: EpsCanSender) -> ! {
+    can_sender.run().await
 }
 
 /// program entry
@@ -167,11 +149,7 @@ async fn main(spawner: Spawner) {
     const FW_VERSION: &str = env!("FW_VERSION");
     const FW_HASH: &str = env!("FW_HASH");
 
-    info!(
-        "Launching: FW version={} hash={}",
-        FW_VERSION,
-        FW_HASH
-    );
+    info!("Launching: FW version={} hash={}", FW_VERSION, FW_HASH);
 
     // remove before flight pin
     let mut safety_off = ExtiInput::new(p.PB4, p.EXTI4, Pull::None, Irqs);
@@ -190,26 +168,22 @@ async fn main(spawner: Spawner) {
 
     // flip flop
     let source_flip_flop = DFlipFlop::new(
-        p.PB6, p.PC14,  // bat 1
-        p.PB7, p.PB9,   // bat 2
-        p.PB8, p.PC15,  // aux pwr
-        p.PB5,          // clk
+        p.PB6, p.PC14, // bat 1
+        p.PB7, p.PB9, // bat 2
+        p.PB8, p.PC15, // aux pwr
+        p.PB5,  // clk
     );
 
     // sink ctrl
     let sink_ctrl = SinkCtrl::new(
-        p.PA5, // carrier
-        p.PA3, // umbilical
-        p.PC6, // rocketlst 1
-        p.PA9, // rocketlst 2
-        p.PA8, // SensorLower
-        p.PA15,// RocketHD
-        p.PA4  // Pyro
+        p.PA5,  // carrier
+        p.PA3,  // umbilical
+        p.PC6,  // rocketlst 1
+        p.PA9,  // rocketlst 2
+        p.PA8,  // SensorLower
+        p.PA15, // RocketHD
+        p.PA4,  // Pyro
     );
-
-    // TM channel setup
-    let tm_channel = TMC.init(Channel::new());
-    let cmd_channel = CMDC.init(Channel::new());
 
     // first battery temp sensor
     let bat_1_tmp = Tmp100::new(i2c, Resolution::BITS12, pwr_src::tmp100_drv::A0::Floating)
@@ -222,7 +196,10 @@ async fn main(spawner: Spawner) {
         .inspect_err(|e| error!("could not establish connection to bat 2 temp sensor: {}", e));
 
     // ina
-    let ina = expect!(Ina::new(i2c, pwr_src::ina3221_drv::A0::Ground).await, "could not establish connection to ina");
+    let ina = expect!(
+        Ina::new(i2c, pwr_src::ina3221_drv::A0::Ground).await,
+        "could not establish connection to ina"
+    );
 
     // debug leds not used at the moment
     let _led1 = Output::new(p.PB3, Level::Low, Speed::Low);
@@ -232,7 +209,7 @@ async fn main(spawner: Spawner) {
     // can 1 configuration
     let mut can_configurator =
         CanPeriphConfig::new(CanConfigurator::new(p.FDCAN1, p.PA11, p.PA12, Irqs));
-    
+
     // can 2 configuration
     // let mut can_configurator =
     //     CanPeriphConfig::new(CanConfigurator::new(p.FDCAN2, p.PB0, p.PB1, Irqs));
@@ -241,7 +218,7 @@ async fn main(spawner: Spawner) {
         .add_receive_topic(internal_msgs::Telecommand.id())
         .unwrap();
 
-    let can_interface = can_configurator.activate(
+    let can_instance = can_configurator.activate(
         TX_BUF.init(TxFdBuf::<TX_BUF_SIZE>::new()),
         RX_BUF.init(RxFdBuf::<RX_BUF_SIZE>::new()),
     );
@@ -250,12 +227,17 @@ async fn main(spawner: Spawner) {
     let _can_1_standby = Output::new(p.PA10, Level::Low, Speed::Low);
     // let _can_2_standby = Output::new(p.PB2, Level::Low, Speed::Low);
 
+    // Setup can sender and receiver runners
+    let can_receiver = EpsCanReceiver::new(can_instance.reader(), &COM_CHANNELS, EmptyFunc);
+
+    let can_sender = EpsCanSender::new(can_instance.writer(), &COM_CHANNELS);
+
     // Main control loop setup
     let control_loop = ControlLoop::spawn(
         source_flip_flop,
         sink_ctrl,
-        cmd_channel.dyn_receiver(),
-        tm_channel.dyn_sender(),
+        COM_CHANNELS.get_tc_receiver(),
+        COM_CHANNELS.get_tm_sender(),
     );
 
     spawner.spawn(petter(watchdog).unwrap());
@@ -264,17 +246,33 @@ async fn main(spawner: Spawner) {
     spawner.spawn(ctrl_thread(control_loop).unwrap());
 
     if let Ok(tmp) = bat_1_tmp {
-        spawner.spawn(sensor_threads::bat_temp_thread(tm_channel.dyn_sender(), tmp, &tm::Bat1Temperature, FlipFlopInput::Bat1).unwrap());
+        spawner.spawn(
+            sensor_threads::bat_temp_thread(
+                COM_CHANNELS.get_tm_sender(),
+                tmp,
+                &tm::Bat1Temperature,
+                FlipFlopInput::Bat1,
+            )
+            .unwrap(),
+        );
     }
 
     if let Ok(tmp) = bat_2_tmp {
-        spawner.spawn(sensor_threads::bat_temp_thread(tm_channel.dyn_sender(), tmp, &tm::Bat2Temperature, FlipFlopInput::Bat2).unwrap());
+        spawner.spawn(
+            sensor_threads::bat_temp_thread(
+                COM_CHANNELS.get_tm_sender(),
+                tmp,
+                &tm::Bat2Temperature,
+                FlipFlopInput::Bat2,
+            )
+            .unwrap(),
+        );
     }
 
-    spawner.spawn(sensor_threads::ina_thread(tm_channel.dyn_sender(), ina).unwrap());
+    spawner.spawn(sensor_threads::ina_thread(COM_CHANNELS.get_tm_sender(), ina).unwrap());
 
-    spawner.spawn(tm_thread(can_interface.writer(), tm_channel.receiver()).unwrap());
-    spawner.spawn(tc_thread(can_interface.reader(), cmd_channel.sender()).unwrap());
+    spawner.spawn(can_sender_task(can_sender).unwrap());
+    spawner.spawn(can_receiver_task(can_receiver).unwrap());
 
     // wait until all other threads finished (never)
     core::future::pending::<()>().await;
