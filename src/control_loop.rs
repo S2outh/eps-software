@@ -11,6 +11,8 @@ use south_common::types::eps::{EPSCommand, FlipFlopInput, Sink, SinkEnabled, Sou
 
 pub static SENSOR_CRITICAL: Signal<ThreadModeRawMutex, CriticalState> = Signal::new();
 
+const REBOOT_TIME: Duration = Duration::from_millis(100);
+
 pub enum CriticalState {
     Temperature(FlipFlopInput),
     UnderVoltage(FlipFlopInput),
@@ -40,53 +42,27 @@ impl<'d> ControlLoop<'d> {
 
     async fn handle_cmd(&mut self, telecommand: EPSCommand) {
         match telecommand {
-            EPSCommand::EnableSource(source, time) => {
-                if self.source_flip_flop.is_enabled(source) {
-                    return;
-                }
+            EPSCommand::EnableSource(source) => {
                 self.source_flip_flop.set(source).await;
-                if let Some(time) = time {
-                    // this is blocking and prevents tc during timeout.
-                    // might be good to fix in the future
-                    Timer::after_secs(time as u64).await;
-                    self.source_flip_flop.reset(source).await;
-                }
             }
-            EPSCommand::DisableSource(source, time) => {
-                if !self.source_flip_flop.is_enabled(source) {
-                    return;
-                }
+            EPSCommand::DisableSource(source) => {
                 self.source_flip_flop.reset(source).await;
-                if let Some(time) = time {
-                    // this is blocking and prevents tc during timeout.
-                    // might be good to fix in the future
-                    Timer::after_secs(time as u64).await;
-                    self.source_flip_flop.set(source).await;
-                }
             }
-            EPSCommand::EnableSink(sink, time) => {
-                if self.sink_ctrl.is_enabled(sink) {
-                    return;
-                }
+            EPSCommand::RebootSource(source) => {
+                self.source_flip_flop.reset(source).await;
+                Timer::after(REBOOT_TIME).await;
+                self.source_flip_flop.set(source).await;
+            }
+            EPSCommand::EnableSink(sink) => {
                 self.sink_ctrl.enable(sink);
-                if let Some(time) = time {
-                    // this is blocking and prevents tc during timeout.
-                    // might be good to fix in the future
-                    Timer::after_secs(time as u64).await;
-                    self.sink_ctrl.disable(sink);
-                }
             }
-            EPSCommand::DisableSink(sink, time) => {
-                if !self.sink_ctrl.is_enabled(sink) {
-                    return;
-                }
+            EPSCommand::DisableSink(sink) => {
                 self.sink_ctrl.disable(sink);
-                if let Some(time) = time {
-                    // this is blocking and prevents tc during timeout.
-                    // might be good to fix in the future
-                    Timer::after_secs(time as u64).await;
-                    self.sink_ctrl.enable(sink);
-                }
+            }
+            EPSCommand::RebootSink(sink) => {
+                self.sink_ctrl.disable(sink);
+                Timer::after(REBOOT_TIME).await;
+                self.sink_ctrl.enable(sink);
             }
         }
     }
